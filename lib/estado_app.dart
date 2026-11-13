@@ -1,0 +1,127 @@
+import 'package:material_ui/material_ui.dart';
+
+import 'armazenamento.dart';
+import 'classificar.dart';
+import 'config.dart';
+import 'fundo.dart';
+import 'moodle.dart';
+import 'sync.dart';
+import 'util.dart';
+
+/// Estado global das telas: snapshot carregado, sincronizacao em andamento, erros.
+class AppEstado extends ChangeNotifier {
+  Map<String, dynamic> snap = {};
+  Map<String, dynamic> estado = {};
+  bool logado = false;
+  bool carregando = true;
+  bool sincronizando = false;
+  String progresso = '';
+  String? erro;
+
+  String? token;
+
+  /// Todas as materias sincronizadas.
+  List<Map<String, dynamic>> get todosCursos => lista(snap['cursos']).map(mapa).toList();
+
+  bool ehAtual(Map<String, dynamic> c) {
+    final man = Cfg.atualManual['${c['id']}'];
+    return man is bool ? man : c['atual'] != false;
+  }
+
+  /// Materias visiveis: so as do semestre atual, a nao ser que "ver todas" esteja ligado.
+  List<Map<String, dynamic>> get cursos => Cfg.verTodas ? todosCursos : todosCursos.where(ehAtual).toList();
+
+  Future<void> alternarVerTodas() async {
+    await Cfg.setVerTodas(!Cfg.verTodas);
+    notifyListeners();
+  }
+
+  Future<void> marcarAtual(dynamic cursoId, bool? v) async {
+    await Cfg.setAtualManual(cursoId, v);
+    notifyListeners();
+  }
+
+  Future<void> marcarCategoria(String chave, String? v) async {
+    await Cfg.setCategoriaManual(chave, v);
+    notifyListeners();
+  }
+
+  Future<void> carregar() async {
+    token = await Cfg.token();
+    logado = token != null && Cfg.site.isNotEmpty;
+    snap = await Store.snapshot();
+    estado = await Store.estado();
+    carregando = false;
+    notifyListeners();
+  }
+
+  Future<void> sincronizar() async {
+    if (sincronizando) return;
+    sincronizando = true;
+    erro = null;
+    progresso = 'Iniciando...';
+    notifyListeners();
+    try {
+      final r = await Sync.rodar(progresso: (p) {
+        progresso = p;
+        notifyListeners();
+      });
+      snap = r.snapshot;
+      estado = await Store.estado();
+      await avisar(r);
+    } on MoodleErro catch (e) {
+      erro = e.msg;
+      if (e.sessao) {
+        await Cfg.apagarToken();
+        logado = false;
+      }
+    } catch (e) {
+      erro = 'Falha ao sincronizar: $e';
+    } finally {
+      sincronizando = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> aposLogin() async {
+    token = await Cfg.token();
+    logado = true;
+    notifyListeners();
+    await agendar();
+    await sincronizar();
+  }
+
+  Future<void> sair() async {
+    await Cfg.sair();
+    logado = false;
+    notifyListeners();
+  }
+
+  /// Tarefas, questionarios e eventos das materias visiveis, futuros (e o que venceu ha
+  /// menos de 1 dia), em ordem. Cada item: tipo, item, ts, cat (prova/atividade), curso.
+  List<Map<String, dynamic>> prazos() {
+    final limite = agoraSeg() - 86400;
+    final out = <Map<String, dynamic>>[];
+    final visiveis = cursos;
+    for (final c in visiveis) {
+      final it = itensDoCurso(c);
+      out.addAll([...it.atividades, ...it.provas].where((e) => (e['ts'] as int) > limite));
+    }
+    // eventos de acao do Moodle que nao vieram por outro caminho (ex.: forum com prazo)
+    final nomes = visiveis.map((c) => c['nome']).toSet();
+    final ids = out.map((e) => '${e['tipo']}:${mapa(e['item'])['id']}').toSet();
+    for (final e in lista(snap['eventos']).map(mapa)) {
+      final ts = (e['ts'] as num?)?.toInt() ?? 0;
+      if (ts <= limite || !nomes.contains(e['curso'])) continue;
+      if (e['modulo'] == 'assign' && ids.contains('tarefa:${e['instancia']}')) continue;
+      if (e['modulo'] == 'quiz' && ids.contains('quiz:${e['instancia']}')) continue;
+      out.add({'tipo': 'acao', 'ts': ts, 'item': e, 'cat': 'atividade', 'curso': {'nome': e['curso']}});
+    }
+    out.sort((a, b) => (a['ts'] as int).compareTo(b['ts'] as int));
+    return out;
+  }
+
+  Map<String, dynamic>? cursoPorId(dynamic id) => todosCursos.where((c) => c['id'] == id).firstOrNull;
+}
+
+final app = AppEstado();
