@@ -28,16 +28,30 @@ class _InicioTelaState extends State<InicioTela> {
         final ult = app.snap['gerado_em'];
         return Scaffold(
           appBar: AppBar(
-            title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_titulos[_aba]),
-              Text(
-                app.sincronizando
-                    ? app.progresso
-                    : ult == null
-                        ? 'Ainda não sincronizado'
-                        : 'Atualizado ${fmtRelativo(ult)}',
-                style: Theme.of(context).textTheme.bodySmall,
-                overflow: TextOverflow.ellipsis,
+            title: Row(children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(13),
+                  gradient: const LinearGradient(colors: [Color(0xFFB49AFF), Color(0xFF7D5AD1)]),
+                ),
+                child: const Icon(Icons.school_rounded, color: Color(0xFF171020), size: 21),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_titulos[_aba], style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+                  Text(
+                    app.sincronizando
+                        ? app.progresso
+                        : ult == null
+                            ? 'Ainda não sincronizado'
+                            : 'Atualizado ${fmtRelativo(ult)}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ]),
               ),
             ]),
             actions: [
@@ -92,12 +106,93 @@ Widget _atualizavel(Widget filho) => RefreshIndicator(onRefresh: app.sincronizar
 class PrazosAba extends StatelessWidget {
   const PrazosAba({super.key});
 
+  Widget _boasVindas(BuildContext context, int semana) {
+    final primeiroNome = Cfg.usuarioNome.trim().split(RegExp(r'\s+')).firstOrNull;
+    final saudacao = primeiroNome == null || primeiroNome.isEmpty ? 'Seu semestre em foco' : 'Olá, $primeiroNome';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF392B59), Color(0xFF211A30)]),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        boxShadow: [BoxShadow(color: const Color(0xFF8C68DA).withValues(alpha: 0.14), blurRadius: 28, offset: const Offset(0, 12))],
+      ),
+      child: Stack(children: [
+        Positioned(right: -10, top: -12, child: Icon(Icons.auto_awesome_rounded, size: 96, color: Colors.white.withValues(alpha: 0.045))),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.wb_twilight_rounded, size: 16, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 7),
+            Text(fmtData(DateTime.now().millisecondsSinceEpoch ~/ 1000, hora: false).toUpperCase(),
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.05, color: Color(0xFFD5C5FF))),
+          ]),
+          const SizedBox(height: 12),
+          Text(saudacao, style: const TextStyle(fontSize: 25, height: 1.1, fontWeight: FontWeight.w700, letterSpacing: -0.7)),
+          const SizedBox(height: 7),
+          Text('Acompanhe seus prazos e mantenha cada matéria no ritmo certo.',
+              style: TextStyle(fontSize: 13, height: 1.4, color: Colors.white.withValues(alpha: 0.72))),
+          const SizedBox(height: 17),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.09), borderRadius: BorderRadius.circular(30)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(semana == 0 ? Icons.check_circle_outline_rounded : Icons.bolt_rounded, size: 15, color: const Color(0xFFD7C5FF)),
+              const SizedBox(width: 6),
+              Text(semana == 0 ? 'Tudo sob controle' : '$semana prazos nos próximos 7 dias',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFF4EEFF))),
+            ]),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _indicador(BuildContext context, IconData icon, String valor, String rotulo, {bool destaque = false}) {
+    final cs = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 14, 10, 13),
+        decoration: BoxDecoration(
+          color: destaque ? cs.primary.withValues(alpha: 0.11) : cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: (destaque ? cs.primary : cs.outlineVariant).withValues(alpha: 0.18)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 17, color: cs.primary),
+          const SizedBox(height: 9),
+          Text(valor, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
+          const SizedBox(height: 2),
+          Text(rotulo, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final itens = app.prazos();
+    final agora = agoraSeg();
+    final semana = itens.where((e) => (e['ts'] as int) >= agora && (e['ts'] as int) < agora + 7 * 86400).length;
+    final pendentes = itens.where((e) => e['tipo'] == 'tarefa' && mapa(e['item'])['situacao'] != 'submitted').length;
+    final resumo = Column(children: [
+      _boasVindas(context, semana),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(children: [
+          _indicador(context, Icons.event_available_rounded, '$semana', 'Nesta semana', destaque: true),
+          const SizedBox(width: 9),
+          _indicador(context, Icons.assignment_turned_in_outlined, '$pendentes', 'Tarefas abertas'),
+          const SizedBox(width: 9),
+          _indicador(context, Icons.menu_book_rounded, '${app.cursos.length}', 'Matérias'),
+        ]),
+      ),
+      const SizedBox(height: 14),
+    ]);
     if (itens.isEmpty) {
       return _atualizavel(ListView(children: [
-        const SizedBox(height: 120),
+        resumo,
         Vazio(Icons.celebration_outlined,
             app.snap.isEmpty ? 'Puxe para baixo para sincronizar.' : 'Nenhum prazo pela frente.'),
       ]));
@@ -117,6 +212,7 @@ class PrazosAba extends StatelessWidget {
     return _atualizavel(ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
+        resumo,
         if (Cfg.verTodas)
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -125,10 +221,16 @@ class PrazosAba extends StatelessWidget {
         for (final g in grupos.entries) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child: Text(g.key, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
+            child: Row(children: [
+              Container(width: 4, height: 18, decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(4))),
+              const SizedBox(width: 9),
+              Text(g.key, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(width: 10),
+              Expanded(child: Divider(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.35))),
+            ]),
           ),
           for (final it in g.value)
-            Card(margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: ItemLinha(it, mostrarCurso: true)),
+            Card(child: ItemLinha(it, mostrarCurso: true)),
         ],
       ],
     ));
