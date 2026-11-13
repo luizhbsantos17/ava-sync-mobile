@@ -44,7 +44,9 @@ jobs:
           ANDROID_KEYALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEYPASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          flutter build apk --release
+          flutter build apk --release \
+            --build-number "$GITHUB_RUN_NUMBER" \
+            --dart-define=AVA_SYNC_BUILD="$GITHUB_RUN_NUMBER"
           cp build/app/outputs/flutter-apk/app-release.apk AVA-Sync.apk
 
       - uses: actions/upload-artifact@v4
@@ -57,5 +59,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest AVA-Sync.apk --prerelease --title "AVA Sync (última versão)" \
-            --notes "APK gerado automaticamente a partir de ${GITHUB_SHA::7}. Baixe AVA-Sync.apk pelo celular e instale."
+          printf 'Build: %s\nCommit: %s\n\nAPK gerado automaticamente. Baixe e instale pelo celular.\n' \
+            "$GITHUB_RUN_NUMBER" "${GITHUB_SHA::7}" > release-notes.md
+          gh release create latest AVA-Sync.apk --title "AVA Sync (última versão)" --notes-file release-notes.md

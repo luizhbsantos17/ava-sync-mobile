@@ -77,6 +77,10 @@ flutter build apk --release --split-per-abi
 O GitHub Actions (`.github/workflows/build.yml`) roda os testes e publica o APK no Release
 `latest` a cada push na `main`.
 
+No app, abra **Ajustes > Verificar atualizações**. Se houver um build mais novo, o app abre o
+download do APK; o Android pede confirmação antes de instalar. Para atualizar por cima da versão
+instalada, configure a mesma keystore de release em todos os builds (veja abaixo).
+
 ### Assinatura (recomendado)
 
 Sem keystore próprio o APK sai assinado com a chave de debug, e cada build do GitHub pode

@@ -95,7 +95,7 @@ class HtmlView extends StatelessWidget {
   final String? baseDir; // para src relativo (HTML salvo em pasta)
   const HtmlView(this.html, {super.key, this.baseDir});
 
-  Widget? _img(BuildContext context, String src) {
+  Widget? _img(BuildContext context, String src, {bool dentroDeLink = false}) {
     Widget? w;
     if (src.startsWith('/')) {
       w = Image.file(File(src), errorBuilder: (_, _, _) => const Icon(Icons.broken_image));
@@ -107,10 +107,14 @@ class HtmlView extends StatelessWidget {
     }
     if (w == null) return null;
     final img = w;
+    final conteudo = Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: img);
+    // A imagem ligada a uma página/arquivo deve acionar o <a> pai. O gesto de zoom
+    // aqui capturava o toque e impedia o HtmlWidget de abrir o destino do link.
+    if (dentroDeLink) return conteudo;
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => Scaffold(appBar: AppBar(), body: InteractiveViewer(maxScale: 6, child: Center(child: img))))),
-      child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: img),
+      child: conteudo,
     );
   }
 
@@ -129,7 +133,9 @@ class HtmlView extends StatelessWidget {
         'table' => {'border-collapse': 'collapse'},
         _ => null,
       },
-      customWidgetBuilder: (el) => el.localName == 'img' ? _img(context, el.attributes['src'] ?? '') : null,
+      customWidgetBuilder: (el) => el.localName == 'img'
+          ? _img(context, el.attributes['src'] ?? '', dentroDeLink: el.parent?.localName == 'a')
+          : null,
       onTapUrl: (url) async {
         await abrirLink(context, url);
         return true;

@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../armazenamento.dart';
+import '../atualizacao.dart';
 import '../config.dart';
 import '../estado_app.dart';
 import '../fundo.dart';
@@ -15,6 +17,7 @@ class AjustesAba extends StatefulWidget {
 
 class _AjustesAbaState extends State<AjustesAba> {
   int? _espaco;
+  bool _verificandoAtualizacao = false;
 
   @override
   void initState() {
@@ -26,6 +29,53 @@ class _AjustesAbaState extends State<AjustesAba> {
     await f();
     if (reagendar) await agendar();
     setState(() {});
+  }
+
+  Future<void> _verificarAtualizacao() async {
+    if (_verificandoAtualizacao) return;
+    setState(() => _verificandoAtualizacao = true);
+    try {
+      final info = await Atualizacao.verificar();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: Icon(info.disponivel ? Icons.system_update_alt_rounded : Icons.check_circle_outline_rounded),
+          title: Text(info.disponivel ? 'Atualização disponível' : 'Você já está na versão mais recente'),
+          content: Text(info.disponivel
+              ? 'Build ${info.build} está disponível. Build instalado: ${info.buildInstalado}. Baixe o APK para atualizar; o Android pedirá confirmação da instalação.'
+              : 'Build instalado: ${info.buildInstalado}. Não há uma versão mais recente no momento.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
+            if (info.disponivel)
+              FilledButton.icon(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  final abriu = await launchUrl(Uri.parse(info.apkUrl), mode: LaunchMode.externalApplication);
+                  if (!abriu && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não consegui abrir o download.')));
+                  }
+                },
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Baixar APK'),
+              ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.cloud_off_outlined),
+          title: const Text('Não foi possível verificar'),
+          content: Text('$e'),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar'))],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _verificandoAtualizacao = false);
+    }
   }
 
   Future<String?> _editarTexto(String titulo, String atual, {String? ajuda, bool senha = false}) {
@@ -235,6 +285,18 @@ class _AjustesAbaState extends State<AjustesAba> {
             'O material da matéria (textos, avisos, enunciados e, se ligado, os PDFs) é enviado ao provedor escolhido '
             'quando você toca em "Gerar". O token do AVA nunca é enviado.',
             style: TextStyle(fontSize: 12)),
+      ),
+      secao('Aplicativo'),
+      ListTile(
+        leading: const Icon(Icons.system_update_alt_rounded),
+        title: Text(_verificandoAtualizacao ? 'Verificando atualizações...' : 'Verificar atualizações'),
+        subtitle: Text(Atualizacao.buildInstalado == 0
+            ? 'Build de desenvolvimento · buscar uma versão no GitHub'
+            : 'Build instalado: ${Atualizacao.buildInstalado} · buscar uma versão no GitHub'),
+        trailing: _verificandoAtualizacao
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.chevron_right),
+        onTap: _verificandoAtualizacao ? null : _verificarAtualizacao,
       ),
       secao('Sobre'),
       const ListTile(
