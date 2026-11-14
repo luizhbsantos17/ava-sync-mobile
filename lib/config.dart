@@ -54,6 +54,35 @@ class Cfg {
   static bool get permissaoPedida => _p.getBool('perm_notif') ?? false;
   static Future<void> setPermissaoPedida(bool v) => _p.setBool('perm_notif', v);
 
+  // ---- atualizacoes do app ----
+  static bool get verificarAtualizacoes => _p.getBool('upd_auto') ?? true;
+  static Future<void> setVerificarAtualizacoes(bool v) => _p.setBool('upd_auto', v);
+  static int get updUltimaVerificacao => _p.getInt('upd_ultima') ?? 0;
+  static Future<void> setUpdUltimaVerificacao(int v) => _p.setInt('upd_ultima', v);
+  /// Build ja avisado por notificacao (uma vez por build).
+  static int get updNotificado => _p.getInt('upd_notif') ?? 0;
+  static Future<void> setUpdNotificado(int v) => _p.setInt('upd_notif', v);
+  /// "Depois": nao pergunta de novo sobre este build ate [updAdiadoAte] (segundos).
+  static int get updAdiadoBuild => _p.getInt('upd_adiado') ?? 0;
+  static int get updAdiadoAte => _p.getInt('upd_adiado_ate') ?? 0;
+  static Future<void> adiarAtualizacao(int build, int ate) async {
+    await _p.setInt('upd_adiado', build);
+    await _p.setInt('upd_adiado_ate', ate);
+  }
+
+  // ---- calendario do celular (Google Agenda) ----
+  static bool get calendario => _p.getBool('cal_on') ?? false;
+  static Future<void> setCalendario(bool v) => _p.setBool('cal_on', v);
+  static String get calendarioId => _p.getString('cal_id') ?? '';
+  static Future<void> setCalendarioId(String v) => _p.setString('cal_id', v);
+  static String get calendarioNome => _p.getString('cal_nome') ?? '';
+  static Future<void> setCalendarioNome(String v) => _p.setString('cal_nome', v);
+  static bool get calendarioSoProvas => _p.getBool('cal_provas') ?? false;
+  static Future<void> setCalendarioSoProvas(bool v) => _p.setBool('cal_provas', v);
+  /// chave do compromisso -> id do evento criado no calendario
+  static Map<String, dynamic> get calendarioEventos => _json('cal_eventos');
+  static Future<void> setCalendarioEventos(Map<String, dynamic> m) => _p.setString('cal_eventos', jsonEncode(m));
+
   // ---- semestre atual e categorias (ajustes manuais da pessoa) ----
   static bool get verTodas => _p.getBool('ver_todas') ?? false;
   static Future<void> setVerTodas(bool v) => _p.setBool('ver_todas', v);

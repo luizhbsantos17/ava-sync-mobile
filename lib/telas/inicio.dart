@@ -365,6 +365,8 @@ class NovidadesAba extends StatelessWidget {
           'prova' => Icons.quiz_outlined,
           'aviso' => Icons.campaign_outlined,
           'material' => Icons.attach_file,
+          'entrega' => Icons.task_alt,
+          'nota' => Icons.grade_outlined,
           _ => Icons.info_outline,
         };
     return _atualizavel(ListView(

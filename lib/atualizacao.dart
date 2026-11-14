@@ -1,6 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+
+import 'config.dart';
+import 'util.dart';
 
 /// Busca a versão publicada pelo workflow do repositório.
 class AtualizacaoInfo {
@@ -58,4 +62,84 @@ class Atualizacao {
       if (cliente == null) client.close();
     }
   }
+
+  /// Verificacao automatica (ao abrir o app e no segundo plano). Nunca lanca erro:
+  /// sem internet ou com o GitHub fora do ar, so devolve null.
+  static Future<AtualizacaoInfo?> verificarAuto({http.Client? cliente}) async {
+    if (!Cfg.verificarAtualizacoes || buildInstalado == 0) return null;
+    try {
+      final info = await verificar(cliente: cliente);
+      await Cfg.setUpdUltimaVerificacao(agoraSeg());
+      return info.disponivel ? info : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Deve perguntar agora? (a pessoa pode ter tocado em "Depois" para este build)
+  static bool devePerguntar(AtualizacaoInfo info, int agora) =>
+      info.disponivel && !(Cfg.updAdiadoBuild == info.build && agora < Cfg.updAdiadoAte);
+}
+
+/// Download do APK dentro do app. Grava num arquivo temporario e so renomeia quando o
+/// tamanho bate com o anunciado pelo servidor, para nunca instalar um APK cortado.
+class DownloadApk {
+  /// Sem receber nenhum byte por este tempo, desiste (em vez de ficar parado para sempre).
+  static const ociosoMax = Duration(seconds: 45);
+
+  static Future<File> baixar(
+    String url,
+    Directory pasta, {
+    void Function(int recebido, int? total)? progresso,
+    http.Client? cliente,
+    bool Function()? cancelado,
+    Duration ocioso = ociosoMax,
+  }) async {
+    final client = cliente ?? http.Client();
+    await pasta.create(recursive: true);
+    final destino = File('${pasta.path}/AVA-Sync.apk');
+    final parcial = File('${destino.path}.part');
+    IOSink? sink;
+    try {
+      final req = http.Request('GET', Uri.parse(url))
+        ..headers['User-Agent'] = 'AVA-Sync-Mobile'
+        ..headers['Accept'] = 'application/octet-stream';
+      final resp = await client.send(req).timeout(const Duration(seconds: 30));
+      if (resp.statusCode != 200) throw Exception('O download respondeu com o código ${resp.statusCode}.');
+      final total = resp.contentLength;
+      if (await parcial.exists()) await parcial.delete();
+      sink = parcial.openWrite();
+      var recebido = 0;
+      progresso?.call(0, total);
+      await for (final bloco in resp.stream.timeout(ocioso,
+          onTimeout: (s) => s.addError(Exception('O download parou de receber dados. Tente de novo.')))) {
+        if (cancelado?.call() ?? false) throw const DownloadCancelado();
+        sink.add(bloco);
+        recebido += bloco.length;
+        progresso?.call(recebido, total);
+        if (total != null && recebido >= total) break; // terminou: nao espera o servidor fechar
+      }
+      await sink.flush();
+      await sink.close();
+      sink = null;
+      if (total != null && recebido != total) {
+        throw Exception('Download incompleto ($recebido de $total bytes). Tente de novo.');
+      }
+      if (recebido < 1024 * 1024) throw Exception('O arquivo baixado não parece um APK válido.');
+      if (await destino.exists()) await destino.delete();
+      return await parcial.rename(destino.path);
+    } catch (_) {
+      await sink?.close();
+      if (await parcial.exists()) await parcial.delete();
+      rethrow;
+    } finally {
+      if (cliente == null) client.close();
+    }
+  }
+}
+
+class DownloadCancelado implements Exception {
+  const DownloadCancelado();
+  @override
+  String toString() => 'Download cancelado.';
 }

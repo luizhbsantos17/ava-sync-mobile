@@ -16,6 +16,48 @@ const situacoes = {
   'reopened': 'Reaberta',
 };
 
+const versaoAvisos = 2;
+
+/// Compara a tarefa com o que ja foi visto e devolve as novidades (texto + tipo).
+/// Registra as chaves em [vistos]. Com [silencioso], so registra.
+List<Map<String, dynamic>> mudancasTarefa(Map<String, dynamic> t, Map<String, dynamic> vistos, int agora,
+    {bool silencioso = false}) {
+  final out = <Map<String, dynamic>>[];
+  final id = t['id'];
+  final nome = t['nome'];
+  void marca(String chave, String texto, String tipo) {
+    if (!vistos.containsKey(chave) && !silencioso) out.add({'texto': texto, 'tipo': tipo});
+    vistos[chave] = agora;
+  }
+
+  final entrega = (t['entrega'] as num?)?.toInt() ?? 0;
+  final corte = (t['corte'] as num?)?.toInt() ?? 0;
+  final entregue = t['situacao'] == 'submitted';
+  if (entregue) marca('entregue:$id', 'Entrega registrada: $nome', 'entrega');
+  final nota = '${t['nota'] ?? ''}'.trim();
+  if (nota.isNotEmpty && nota != '-') marca('nota:$id:$nota', 'Nota publicada em $nome: $nota', 'nota');
+
+  // prazo alterado: compara com o ultimo prazo registrado desta tarefa
+  final chavePrazo = 'prazo:$id';
+  final antes = (vistos['${chavePrazo}_ts'] as num?)?.toInt();
+  if (antes != null && entrega > 0 && antes != entrega && !silencioso) {
+    out.add({'texto': 'Prazo alterado: $nome (agora ${fmtData(entrega)})', 'tipo': 'tarefa'});
+  }
+  if (entrega > 0) vistos['${chavePrazo}_ts'] = entrega;
+
+  // venceu sem entrega
+  if (!entregue && entrega > 0 && entrega <= agora && agora - entrega < 7 * 86400) {
+    final aindaAceita = corte > agora;
+    marca(
+        'vencida:$id:$entrega',
+        aindaAceita
+            ? 'Prazo encerrado sem entrega: $nome (ainda aceita até ${fmtData(corte)})'
+            : 'Prazo encerrado sem entrega: $nome',
+        'tarefa');
+  }
+  return out;
+}
+
 class ResultadoSync {
   final List<Map<String, dynamic>> novidades;
   final Map<String, dynamic> snapshot;
@@ -63,6 +105,8 @@ class Sync {
     final estado = await Store.estado();
     final vistos = mapa(estado['vistos']);
     final primeiraVez = vistos.isEmpty;
+    // versoes antigas nao registravam entrega/nota/prazo: na primeira vez so registra, sem avisar
+    final silencioso = primeiraVez || estado['v_avisos'] != versaoAvisos;
     final novidades = <Map<String, dynamic>>[];
     progresso('Conectando...');
     final site = mapa(await m.call('core_webservice_get_site_info'));
@@ -280,6 +324,12 @@ class Sync {
           'rascunhos': a['submissiondrafts'] == 1 || a['submissiondrafts'] == true,
           'link': '${m.site}/mod/assign/view.php?id=${a['cmid']}',
         };
+        // mudancas em tarefa que ja conhecemos: entrega registrada, nota, prazo alterado, prazo vencido
+        if (vistos.containsKey('assign:${a['id']}')) {
+          for (final mud in mudancasTarefa(t, vistos, agora, silencioso: silencioso)) {
+            if (atual) novidades.add({'ts': agora, 'curso': nomeCurso, ...mud, 'tarefaId': a['id']});
+          }
+        }
         nova('assign:${a['id']}', nomeCurso, 'Tarefa nova: ${a['name']} (entrega ${fmtData(a['duedate'])})',
             tipo: 'tarefa', ref: {'tarefaId': a['id']});
         tarefasOut.add(t);
@@ -403,6 +453,7 @@ class Sync {
     }
     estado['historico'] = hist.take(300).toList();
     estado['vistos'] = vistos;
+    estado['v_avisos'] = versaoAvisos;
     estado['ultima'] = agora;
     await Store.salvarEstado(estado);
     progresso('Pronto');

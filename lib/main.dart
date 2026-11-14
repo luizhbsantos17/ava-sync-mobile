@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'atualizacao.dart';
 import 'config.dart';
 import 'estado_app.dart';
 import 'fundo.dart';
+import 'util.dart';
+import 'telas/atualizar.dart';
 import 'telas/inicio.dart';
 import 'telas/login.dart';
 
@@ -16,6 +21,14 @@ Future<void> main() async {
   } catch (_) {}
   runApp(const AvaSyncApp());
   await app.carregar();
+  Notif.aoTocar = (payload) {
+    if (payload == payloadAtualizar) unawaited(procurarAtualizacao(forcar: true));
+  };
+  String? abriuPor;
+  try {
+    abriuPor = await Notif.payloadDeAbertura();
+  } catch (_) {}
+  unawaited(procurarAtualizacao(forcar: abriuPor == payloadAtualizar));
   if (app.logado) {
     await agendar();
     if (!Cfg.permissaoPedida) {
@@ -26,6 +39,22 @@ Future<void> main() async {
     final ult = (app.snap['gerado_em'] as num?)?.toInt() ?? 0;
     if (DateTime.now().millisecondsSinceEpoch ~/ 1000 - ult > 3600) app.sincronizar();
   }
+}
+
+final navegador = GlobalKey<NavigatorState>();
+
+/// Procura versao nova e, se houver, pergunta se quer atualizar.
+/// [forcar]: pergunta mesmo que a pessoa tenha tocado em "Depois" antes.
+Future<void> procurarAtualizacao({bool forcar = false}) async {
+  final info = await Atualizacao.verificarAuto();
+  if (info == null || (!forcar && !Atualizacao.devePerguntar(info, agoraSeg()))) return;
+  // espera a tela inicial ficar pronta
+  for (var i = 0; i < 20 && (navegador.currentContext == null || app.carregando); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+  }
+  final ctx = navegador.currentContext;
+  if (ctx == null || !ctx.mounted) return;
+  await oferecerAtualizacao(ctx, info, automatico: !forcar);
 }
 
 class AvaSyncApp extends StatelessWidget {
@@ -90,6 +119,7 @@ class AvaSyncApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navegador,
       title: 'AVA Sync',
       debugShowCheckedModeBanner: false,
       theme: _tema(Brightness.light),

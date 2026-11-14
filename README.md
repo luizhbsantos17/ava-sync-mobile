@@ -24,7 +24,15 @@ com notificações e envio de atividades. Funciona sozinho no celular, sem PC, e
 - **Links**: PDFs e slides em links públicos são baixados. Vídeos, Google Drive, reuniões e
   bibliotecas virtuais (leitores protegidos) ficam só como link.
 - **Segundo plano**: sincroniza a cada 6, 12 ou 24 h e avisa quando aparece tarefa, aviso ou
-  material novo. Lembra tarefas não entregues com prazo nas próximas 24 h.
+  material novo, quando a entrega é registrada, quando sai nota, quando um prazo muda e quando
+  um prazo vence sem entrega (dizendo se ainda aceita até a data de corte).
+- **Lembretes de prazo**: 3 dias, 1 dia e 3 horas antes de cada entrega pendente, questionário
+  e prova. Ficam agendados no Android e disparam mesmo com o app fechado.
+- **Agenda (Google Agenda)**: opcional, em Ajustes. Coloca prazos e provas numa agenda do celular
+  e mantém atualizado (muda a data, marca ✓ quando entrega, apaga o que sumiu do AVA). Escolhendo
+  uma agenda da conta Google, aparece no Google Agenda em todos os dispositivos.
+- **Atualização dentro do app**: ao abrir (e em segundo plano) procura versão nova, baixa o APK
+  com barra de progresso e abre o instalador do Android. Não precisa desinstalar.
 - **Enviar atividade**: escolha os arquivos (e/ou texto online), digite **ENVIAR** e confirme.
   Mostra antes o que já foi enviado. "Finalizar" e a declaração de autoria são marcados por você.
 - **Busca** em tudo.
@@ -83,8 +91,10 @@ instalada, configure a mesma keystore de release em todos os builds (veja abaixo
 
 ### Assinatura (recomendado)
 
-Sem keystore próprio o APK sai assinado com a chave de debug, e cada build do GitHub pode
-exigir desinstalar antes de atualizar. Para assinar sempre com a mesma chave:
+Sem keystore próprio o APK sai assinado com uma chave de debug diferente a cada build do
+GitHub, e o Android recusa a atualização ("conflito de pacote"). Com o keystore, todas as
+versões saem com a mesma assinatura e atualizam por cima, sem perder dados.
+**Guarde uma cópia do keystore e da senha**: sem eles, nenhuma versão nova instala por cima. Para assinar sempre com a mesma chave:
 
 ```bash
 keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias avasync

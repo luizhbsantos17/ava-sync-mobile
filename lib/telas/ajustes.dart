@@ -1,13 +1,15 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../armazenamento.dart';
 import '../atualizacao.dart';
+import '../calendario.dart';
+import '../compromissos.dart';
 import '../config.dart';
 import '../estado_app.dart';
 import '../fundo.dart';
 import '../ia.dart';
 import '../util.dart';
+import 'atualizar.dart';
 
 class AjustesAba extends StatefulWidget {
   const AjustesAba({super.key});
@@ -37,31 +39,19 @@ class _AjustesAbaState extends State<AjustesAba> {
     try {
       final info = await Atualizacao.verificar();
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          icon: Icon(info.disponivel ? Icons.system_update_alt_rounded : Icons.check_circle_outline_rounded),
-          title: Text(info.disponivel ? 'Atualização disponível' : 'Você já está na versão mais recente'),
-          content: Text(info.disponivel
-              ? 'Build ${info.build} está disponível. Build instalado: ${info.buildInstalado}. Baixe o APK para atualizar; o Android pedirá confirmação da instalação.'
-              : 'Build instalado: ${info.buildInstalado}. Não há uma versão mais recente no momento.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
-            if (info.disponivel)
-              FilledButton.icon(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  final abriu = await launchUrl(Uri.parse(info.apkUrl), mode: LaunchMode.externalApplication);
-                  if (!abriu && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não consegui abrir o download.')));
-                  }
-                },
-                icon: const Icon(Icons.download_rounded),
-                label: const Text('Baixar APK'),
-              ),
-          ],
-        ),
-      );
+      if (info.disponivel) {
+        await oferecerAtualizacao(context, info);
+      } else {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.check_circle_outline_rounded),
+            title: const Text('Você já está na versão mais recente'),
+            content: Text('Build instalado: ${info.buildInstalado}.'),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar'))],
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       await showDialog<void>(
@@ -69,12 +59,93 @@ class _AjustesAbaState extends State<AjustesAba> {
         builder: (ctx) => AlertDialog(
           icon: const Icon(Icons.cloud_off_outlined),
           title: const Text('Não foi possível verificar'),
-          content: Text('$e'),
+          content: Text('$e'.replaceFirst('Exception: ', '')),
           actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar'))],
         ),
       );
     } finally {
       if (mounted) setState(() => _verificandoAtualizacao = false);
+    }
+  }
+
+  Future<void> _reagendarLembretes() async {
+    final lista = compromissos(app.snap, Cfg.atualManual);
+    await Notif.agendarLembretes(Cfg.lembretePrazo ? lembretes(lista, agoraSeg()) : const []);
+  }
+
+  void _aviso(String t) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  /// Escolhe a agenda (Google primeiro). Devolve false se nao deu.
+  Future<bool> _escolherAgenda() async {
+    if (!await Calendario.pedirPermissao()) {
+      _aviso('Sem permissão para a agenda. Libere em Configurações > Apps > AVA Sync > Permissões.');
+      return false;
+    }
+    final agendas = await Calendario.agendas();
+    if (!mounted) return false;
+    if (agendas.isEmpty) {
+      _aviso('Nenhuma agenda editável no celular. Adicione sua conta Google em Configurações > Contas.');
+      return false;
+    }
+    final escolha = await showDialog<AgendaInfo>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Em qual agenda colocar os prazos?'),
+        children: [
+          for (final a in agendas)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, a),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(a.google ? Icons.event_available : Icons.event_note),
+                title: Text(a.nome),
+                subtitle: a.conta.isEmpty ? null : Text(a.google ? '${a.conta} · Google Agenda' : a.conta),
+                selected: a.id == Cfg.calendarioId,
+              ),
+            ),
+        ],
+      ),
+    );
+    if (escolha == null) return false;
+    if (Cfg.calendarioId.isNotEmpty && Cfg.calendarioId != escolha.id) await Calendario.limpar();
+    await Cfg.setCalendarioId(escolha.id);
+    await Cfg.setCalendarioNome(escolha.rotulo);
+    return true;
+  }
+
+  Future<void> _sincronizarAgenda() async {
+    try {
+      final n = await Calendario.sincronizar(compromissos(app.snap, Cfg.atualManual));
+      _aviso(n == 0 ? 'Agenda já estava em dia.' : 'Agenda atualizada ($n evento(s)).');
+    } catch (e) {
+      _aviso('Não consegui atualizar a agenda: $e');
+    }
+  }
+
+  Future<void> _ligarAgenda(bool v) async {
+    if (v) {
+      if (Cfg.calendarioId.isEmpty && !await _escolherAgenda()) return;
+      await Cfg.setCalendario(true);
+      if (mounted) setState(() {});
+      await _sincronizarAgenda();
+    } else {
+      final apagar = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Desligar a agenda?'),
+          content: const Text('Quer apagar da agenda os próximos eventos que o AVA Sync criou?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Manter eventos')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Apagar')),
+          ],
+        ),
+      );
+      if (apagar == null) return;
+      if (apagar) await Calendario.limpar();
+      await Cfg.setCalendario(false);
+      if (mounted) setState(() {});
     }
   }
 
@@ -189,10 +260,53 @@ class _AjustesAbaState extends State<AjustesAba> {
       SwitchListTile(
         secondary: const Icon(Icons.alarm),
         title: const Text('Lembrar prazos'),
-        subtitle: const Text('Tarefa não entregue com entrega nas próximas 24 h'),
+        subtitle: const Text('3 dias, 1 dia e 3 horas antes de entregas pendentes, questionários e provas'),
         value: Cfg.lembretePrazo,
-        onChanged: (v) => _mudar(() => Cfg.setLembretePrazo(v)),
+        onChanged: (v) => _mudar(() async {
+          await Cfg.setLembretePrazo(v);
+          if (v) await Notif.pedirPermissao();
+          await _reagendarLembretes();
+        }),
       ),
+      secao('Agenda do celular (Google Agenda)'),
+      SwitchListTile(
+        secondary: const Icon(Icons.calendar_month_outlined),
+        title: const Text('Colocar prazos e provas na agenda'),
+        subtitle: const Text('Cria e atualiza os eventos sozinho a cada sincronização. '
+            'Numa agenda da conta Google, aparece também no Google Agenda.'),
+        value: Cfg.calendario,
+        onChanged: _ligarAgenda,
+      ),
+      if (Cfg.calendario) ...[
+        ListTile(
+          leading: const Icon(Icons.event_note_outlined),
+          title: const Text('Agenda'),
+          subtitle: Text(Cfg.calendarioNome.isEmpty ? 'Escolher' : Cfg.calendarioNome),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () async {
+            if (await _escolherAgenda()) {
+              if (mounted) setState(() {});
+              await _sincronizarAgenda();
+            }
+          },
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.school_outlined),
+          title: const Text('Só provas'),
+          subtitle: const Text('Sem entregas de tarefas e questionários comuns'),
+          value: Cfg.calendarioSoProvas,
+          onChanged: (v) async {
+            await Cfg.setCalendarioSoProvas(v);
+            if (mounted) setState(() {});
+            await _sincronizarAgenda();
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.sync_alt),
+          title: const Text('Atualizar agenda agora'),
+          onTap: _sincronizarAgenda,
+        ),
+      ],
       secao('Arquivos'),
       SwitchListTile(
         secondary: const Icon(Icons.download_outlined),
@@ -297,6 +411,13 @@ class _AjustesAbaState extends State<AjustesAba> {
             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.chevron_right),
         onTap: _verificandoAtualizacao ? null : _verificarAtualizacao,
+      ),
+      SwitchListTile(
+        secondary: const Icon(Icons.update),
+        title: const Text('Procurar atualizações sozinho'),
+        subtitle: const Text('Ao abrir o app e em segundo plano; avisa quando sair versão nova'),
+        value: Cfg.verificarAtualizacoes,
+        onChanged: (v) => _mudar(() => Cfg.setVerificarAtualizacoes(v), reagendar: true),
       ),
       secao('Sobre'),
       const ListTile(
