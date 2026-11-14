@@ -11,6 +11,15 @@ Formato:
 **Consequências:** ... (opcional)
 ```
 
+## 2026-11-14 — Main protegida, colaboradores com branches no repositório
+**Decisão:** amigos de confiança entram como colaboradores e criam branches aqui. A
+`main` tem o ruleset "proteger main": só por pull request com a checagem `conferir`
+passando, sem force push nem deleção; o dono (admin) pode pular.
+**Por quê:** permitir que os amigos gerem o APK beta sem poder mudar a versão oficial.
+**Consequências:** a chave de assinatura continua nos secrets do repositório, ao alcance
+de workflows de colaboradores. Foi uma escolha consciente do dono (confia em quem mexe).
+Se um dia entrar alguém menos conhecido, mover a chave para um environment com aprovação.
+
 ## 2026-11-14 — Regras compartilhadas para agentes de IA
 **Decisão:** `AGENTS.md` é a fonte única de regras; contexto em `docs/contexto/` e
 receitas em `.agents/skills/`. `CLAUDE.md`, `GEMINI.md` e Copilot apontam para lá.

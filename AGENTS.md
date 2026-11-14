@@ -139,7 +139,11 @@ Detalhe passo a passo na skill `nova-mudanca`. Resumo:
 
 ## Regras de push (resumo da skill `git-e-push`)
 
-- `main` só recebe push quando o **dono** pede; os outros usam fork + pull request.
+- A `main` é protegida pelo ruleset **"proteger main"**: só entra por pull request
+  com a checagem `conferir` (workflow `pr.yml`) passando; não pode ser apagada nem
+  receber force push. Só o dono (admin) pode pular a regra.
+- `main` só recebe push direto quando o **dono** pede; colaboradores criam branches
+  aqui (`feature/...`, `fix/...`) e abrem pull request; quem não é colaborador usa fork.
 - Nunca `--force` na `main`, nunca `--no-verify`.
 - Confira `git diff --cached` antes de cada commit (segredos e dados pessoais).
 - Push que só muda documentação (`*.md`, `docs/`, `.agents/`, `.claude/`) não gera APK.

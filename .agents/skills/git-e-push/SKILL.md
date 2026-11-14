@@ -21,8 +21,12 @@ description: Regras de branch, commit, push e pull request do AVA Sync. Use ante
 - Uma branch por tarefa. Não mexa na branch de outra pessoa ou agente.
 
 ## Regras de push
-- **Nunca** `git push` na `main` sem o dono pedir explicitamente naquela conversa.
-  Quem não é o dono contribui por fork + pull request.
+- A `main` tem o ruleset **"proteger main"**: exige pull request, exige a checagem
+  `conferir` passando e bloqueia force push e deleção. Para colaboradores, um
+  `git push origin main` é recusado pelo GitHub — isso é esperado; abra um PR.
+- **Nunca** `git push` na `main` sem o dono pedir explicitamente naquela conversa
+  (o dono pode pular a regra; não use isso por conta própria).
+- Colaboradores criam branches neste repositório; quem não é colaborador usa fork.
 - **Nunca** `git push --force` na `main`. Em branch própria, só `--force-with-lease`.
 - **Nunca** pule hooks ou checagens (`--no-verify`).
 - Antes de cada push: `flutter analyze` e `flutter test` limpos.
