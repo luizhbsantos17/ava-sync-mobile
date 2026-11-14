@@ -420,10 +420,10 @@ class _AjustesAbaState extends State<AjustesAba> {
         onChanged: (v) => _mudar(() => Cfg.setVerificarAtualizacoes(v), reagendar: true),
       ),
       secao('Sobre'),
-      const ListTile(
-        leading: Icon(Icons.info_outline),
-        title: Text('AVA Sync'),
-        subtitle: Text('Código aberto (MIT). Use só com a sua própria conta e respeite as regras da sua instituição.'),
+      ListTile(
+        leading: const Icon(Icons.info_outline),
+        title: Text('AVA Sync · versão 0.4.1 (build ${Atualizacao.buildInstalado})'),
+        subtitle: const Text('Código aberto (MIT). Use só com a sua própria conta e respeite as regras da sua instituição.'),
       ),
     ]);
   }
