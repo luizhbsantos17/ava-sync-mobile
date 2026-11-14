@@ -33,6 +33,12 @@ class Cfg {
   static Future<void> setIgnorarCursos(List<String> v) => _p.setStringList('ignorar', v);
   static List<String> get somenteCursos => _p.getStringList('somente') ?? const [];
   static Future<void> setSomenteCursos(List<String> v) => _p.setStringList('somente', v);
+  static Set<String> get cursosIgnoradosIds => (_p.getStringList('cursos_ignorados_ids') ?? const []).toSet();
+  static Future<void> setCursosIgnoradosIds(Set<String> v) => _p.setStringList('cursos_ignorados_ids', v.toList()..sort());
+  static Set<String> get cursosSelecionadosIds => (_p.getStringList('cursos_selecionados_ids') ?? const []).toSet();
+  static Future<void> setCursosSelecionadosIds(Set<String> v) => _p.setStringList('cursos_selecionados_ids', v.toList()..sort());
+  static bool get somenteCursosIdsAtivo => _p.getBool('somente_cursos_ids_ativo') ?? false;
+  static Future<void> setSomenteCursosIdsAtivo(bool v) => _p.setBool('somente_cursos_ids_ativo', v);
 
   // ---- sincronizacao ----
   static bool get autoSync => _p.getBool('auto_sync') ?? true;

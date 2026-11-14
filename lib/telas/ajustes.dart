@@ -149,31 +149,107 @@ class _AjustesAbaState extends State<AjustesAba> {
     }
   }
 
-  Future<String?> _editarTexto(String titulo, String atual, {String? ajuda, bool senha = false}) {
-    final c = TextEditingController(text: atual);
-    return showDialog<String>(
+  Future<void> _selecionarMaterias({required bool ignorar}) async {
+    final cursos = [...app.todosCursos]
+      ..sort((a, b) => '${a['nome'] ?? a['fullname'] ?? ''}'.toLowerCase()
+          .compareTo('${b['nome'] ?? b['fullname'] ?? ''}'.toLowerCase()));
+    if (cursos.isEmpty) {
+      _aviso('Sincronize o AVA uma vez para carregar a lista de matérias.');
+      return;
+    }
+    final ids = cursos.map((c) => '${c['id']}').toSet();
+    final selecionados = ignorar ? Cfg.cursosIgnoradosIds.intersection(ids) : <String>{};
+    if (ignorar) {
+      for (final c in cursos) {
+        final nome = '${c['nome'] ?? c['fullname'] ?? ''}'.toLowerCase();
+        if (Cfg.ignorarCursos.any((s) => nome.contains(s.toLowerCase()))) selecionados.add('${c['id']}');
+      }
+    }
+    if (!ignorar) {
+      if (Cfg.somenteCursosIdsAtivo) {
+        selecionados.addAll(Cfg.cursosSelecionadosIds.intersection(ids));
+      } else if (Cfg.somenteCursos.isEmpty) {
+        selecionados.addAll(ids);
+      } else {
+        for (final c in cursos) {
+          final nome = '${c['nome'] ?? c['fullname'] ?? ''}'.toLowerCase();
+          if (Cfg.somenteCursos.any((s) => nome.contains(s.toLowerCase()))) selecionados.add('${c['id']}');
+        }
+      }
+    }
+    final busca = TextEditingController();
+    final resultado = await showDialog<Set<String>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(titulo),
-        content: TextField(
-            controller: c,
-            obscureText: senha,
-            autofocus: true,
-            decoration: InputDecoration(helperText: ajuda, helperMaxLines: 4)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Salvar')),
-        ],
-      ),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, atualizarDialogo) {
+        final termo = busca.text.trim().toLowerCase();
+        final visiveis = cursos.where((c) => '${c['nome'] ?? c['fullname'] ?? c['shortname'] ?? 'Matéria'}'
+            .toLowerCase().contains(termo)).toList();
+        return AlertDialog(
+          title: Text(ignorar ? 'Ignorar matérias' : 'Sincronizar somente estas'),
+          content: SizedBox(
+            width: 460,
+            height: 480,
+            child: Column(children: [
+              TextField(
+                controller: busca,
+                decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Buscar matéria'),
+                onChanged: (_) => atualizarDialogo(() {}),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => atualizarDialogo(() => selecionados.addAll(visiveis.map((c) => '${c['id']}'))),
+                  child: const Text('Marcar resultados'),
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: visiveis.length,
+                  itemBuilder: (_, i) {
+                    final c = visiveis[i];
+                    final id = '${c['id']}';
+                    final nome = '${c['nome'] ?? c['fullname'] ?? c['shortname'] ?? 'Matéria'}';
+                    return CheckboxListTile(
+                      value: selecionados.contains(id),
+                      title: Text(nome, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      subtitle: c['atual'] == false ? const Text('Semestre anterior') : null,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (v) => atualizarDialogo(() => v == true ? selecionados.add(id) : selecionados.remove(id)),
+                    );
+                  },
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => atualizarDialogo(() => selecionados.removeAll(visiveis.map((c) => '${c['id']}'))),
+                  child: const Text('Desmarcar resultados'),
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, selecionados), child: const Text('Salvar')),
+          ],
+        );
+      }),
     );
+    busca.dispose();
+    if (resultado == null) return;
+    if (ignorar) {
+      await Cfg.setCursosIgnoradosIds(resultado);
+      await Cfg.setIgnorarCursos(const []);
+    } else {
+      final todosMarcados = resultado.length == ids.length && resultado.containsAll(ids);
+      await Cfg.setCursosSelecionadosIds(todosMarcados ? <String>{} : resultado);
+      await Cfg.setSomenteCursosIdsAtivo(!todosMarcados);
+      await Cfg.setSomenteCursos(const []);
+    }
+    app.avisarMudanca();
+    if (mounted) setState(() {});
   }
 
-  Future<void> _lista(String titulo, List<String> atual, Future<void> Function(List<String>) salvar, String ajuda) async {
-    final v = await _editarTexto(titulo, atual.join(', '), ajuda: ajuda);
-    if (v == null) return;
-    await salvar(v.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList());
-    setState(() {});
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -210,16 +286,18 @@ class _AjustesAbaState extends State<AjustesAba> {
       ListTile(
         leading: const Icon(Icons.filter_alt_off_outlined),
         title: const Text('Ignorar matérias'),
-        subtitle: Text(Cfg.ignorarCursos.isEmpty ? 'nenhuma' : Cfg.ignorarCursos.join(', ')),
-        onTap: () => _lista('Ignorar matérias', Cfg.ignorarCursos, Cfg.setIgnorarCursos,
-            'Trechos de nome separados por vírgula. Ex.: Biblioteca Virtual, 2025/2'),
+        subtitle: Text(Cfg.cursosIgnoradosIds.isEmpty && Cfg.ignorarCursos.isEmpty
+            ? 'Nenhuma selecionada'
+            : '${Cfg.cursosIgnoradosIds.length + Cfg.ignorarCursos.length} matéria(s) selecionada(s)'),
+        onTap: () => _selecionarMaterias(ignorar: true),
       ),
       ListTile(
         leading: const Icon(Icons.filter_alt_outlined),
         title: const Text('Somente estas matérias'),
-        subtitle: Text(Cfg.somenteCursos.isEmpty ? 'todas em andamento' : Cfg.somenteCursos.join(', ')),
-        onTap: () => _lista('Somente estas matérias', Cfg.somenteCursos, Cfg.setSomenteCursos,
-            'Deixe vazio para todas. Trechos de nome separados por vírgula.'),
+        subtitle: Text(!Cfg.somenteCursosIdsAtivo && Cfg.somenteCursos.isEmpty
+            ? 'Todas as matérias atuais'
+            : '${Cfg.cursosSelecionadosIds.length + Cfg.somenteCursos.length} matéria(s) selecionada(s)'),
+        onTap: () => _selecionarMaterias(ignorar: false),
       ),
       secao('Sincronização'),
       SwitchListTile(
@@ -241,6 +319,25 @@ class _AjustesAbaState extends State<AjustesAba> {
           ],
           onChanged: (v) => _mudar(() => Cfg.setIntervaloHoras(v ?? 12), reagendar: true),
         ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.sync_alt_rounded),
+        title: const Text('Sincronizar todas as matérias agora'),
+        subtitle: const Text('Atualiza também matérias de semestres anteriores'),
+        onTap: () async {
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Sincronização completa'),
+              content: const Text('Esta sincronização consulta todas as matérias permitidas pelos filtros e pode demorar mais.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sincronizar')),
+              ],
+            ),
+          );
+          if (ok == true) await app.sincronizar(todasMaterias: true);
+        },
       ),
       SwitchListTile(
         secondary: const Icon(Icons.wifi),

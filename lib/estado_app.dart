@@ -104,14 +104,14 @@ class AppEstado extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sincronizar() async {
+  Future<void> sincronizar({bool todasMaterias = false}) async {
     if (sincronizando) return;
     sincronizando = true;
     erro = null;
-    progresso = 'Iniciando...';
+    progresso = todasMaterias ? 'Preparando sincronização completa...' : 'Iniciando...';
     notifyListeners();
     try {
-      final r = await Sync.rodar(progresso: (p) {
+      final r = await Sync.rodar(todasMaterias: todasMaterias, progresso: (p) {
         progresso = p;
         notifyListeners();
       });

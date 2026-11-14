@@ -1,4 +1,4 @@
-name: Gerar APK
+name: Gerar APK oficial
 
 on:
   push:
@@ -37,24 +37,25 @@ jobs:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: echo "$KS" | base64 -d > android/app/release.jks
 
-      - name: Compilar APK
+      - name: Compilar APK oficial
         env:
           ANDROID_STOREFILE: ${{ env.TEM_CHAVE == 'true' && 'release.jks' || '' }}
           ANDROID_STOREPASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEYALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEYPASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          flutter build apk --release \
+          flutter build apk --release --flavor production \
             --build-number "$GITHUB_RUN_NUMBER" \
+            --dart-define=AVA_SYNC_CHANNEL=production \
             --dart-define=AVA_SYNC_BUILD="$GITHUB_RUN_NUMBER"
-          cp build/app/outputs/flutter-apk/app-release.apk AVA-Sync.apk
+          cp build/app/outputs/flutter-apk/app-production-release.apk AVA-Sync.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: AVA-Sync-apk
           path: AVA-Sync.apk
 
-      - name: Publicar no Release "latest"
+      - name: Publicar release oficial "latest"
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

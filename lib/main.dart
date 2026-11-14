@@ -9,6 +9,7 @@ import 'estado_app.dart';
 import 'fundo.dart';
 import 'tema.dart';
 import 'util.dart';
+import 'social/backend.dart';
 import 'telas/atualizar.dart';
 import 'telas/inicio.dart';
 import 'telas/login.dart';
@@ -16,6 +17,7 @@ import 'telas/login.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Cfg.init();
+  await SocialBackend.initialize();
   temaAtual.value = Tema.deTexto(Cfg.temaJson);
   try {
     await Notif.init();

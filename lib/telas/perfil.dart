@@ -13,6 +13,7 @@ import 'ajustes.dart';
 import 'aparencia.dart';
 import 'desempenho.dart';
 import '../qacademico.dart';
+import 'social.dart';
 
 String nomeExibido() {
   final a = Cfg.perfilApelido;
@@ -207,6 +208,13 @@ class _PerfilAbaState extends State<PerfilAba> {
             if (app.academico.isNotEmpty) numero('$emRisco', 'perto do limite de faltas'),
           ]),
         ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.forum_outlined),
+        title: const Text('Grupos e conversas'),
+        subtitle: const Text('Seu espaço social com amigos e colegas'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SocialTela())),
       ),
       ListTile(
         leading: const Icon(Icons.school_outlined),

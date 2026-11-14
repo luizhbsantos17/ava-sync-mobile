@@ -42,6 +42,20 @@ android {
         multiDexEnabled = true
     }
 
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("production") {
+            dimension = "distribution"
+            manifestPlaceholders["appLabel"] = "AVA Sync"
+        }
+        create("beta") {
+            dimension = "distribution"
+            applicationIdSuffix = ".beta"
+            versionNameSuffix = "-beta"
+            manifestPlaceholders["appLabel"] = "AVA Sync Teste"
+        }
+    }
+
     if (temChave) {
         signingConfigs {
             create("release") {

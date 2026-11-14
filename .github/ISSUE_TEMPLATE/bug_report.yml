@@ -1,0 +1,35 @@
+name: Relatar um problema
+description: Informe algo que não funciona no AVA Sync.
+title: "[Problema]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Não inclua senha, token do AVA, dados pessoais, notas ou capturas que exponham informações privadas.
+  - type: input
+    id: version
+    attributes:
+      label: Versão e build
+      placeholder: "0.6.1 (9) ou Beta (build ...)"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Celular e versão do Android
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Como reproduzir
+      description: Liste os passos e remova nomes, tokens e qualquer dado acadêmico privado.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: O que esperava e o que aconteceu
+    validations:
+      required: true

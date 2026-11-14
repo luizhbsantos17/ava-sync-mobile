@@ -52,3 +52,7 @@ app.*.map.json
 *.keystore
 android/key.properties
 .env
+/server/data/
+/server/tls/
+/social-config.json
+/social-supabase-config.json

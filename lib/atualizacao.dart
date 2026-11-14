@@ -25,6 +25,9 @@ class AtualizacaoInfo {
 
 class Atualizacao {
   static const _repo = 'luizhbsantos17/ava-sync-mobile';
+  static const canal = String.fromEnvironment('AVA_SYNC_CHANNEL', defaultValue: 'production');
+  static const _tagRelease = canal == 'beta' ? 'beta' : 'latest';
+  static const _nomeApk = canal == 'beta' ? 'AVA-Sync-Beta.apk' : 'AVA-Sync.apk';
   static const buildInstalado = int.fromEnvironment('AVA_SYNC_BUILD', defaultValue: 0);
 
   static Future<AtualizacaoInfo> verificar({http.Client? cliente}) async {
@@ -32,7 +35,7 @@ class Atualizacao {
     try {
       final response = await client
           .get(
-            Uri.parse('https://api.github.com/repos/$_repo/releases/tags/latest'),
+            Uri.parse('https://api.github.com/repos/$_repo/releases/tags/$_tagRelease'),
             headers: const {'Accept': 'application/vnd.github+json', 'User-Agent': 'AVA-Sync-Mobile'},
           )
           .timeout(const Duration(seconds: 20));
@@ -48,7 +51,7 @@ class Atualizacao {
       if (build == null) throw Exception('Não consegui identificar a versão publicada.');
 
       final assets = (release['assets'] as List<dynamic>? ?? const []).map((e) => e as Map<String, dynamic>);
-      final apk = assets.where((e) => e['name'] == 'AVA-Sync.apk').firstOrNull;
+      final apk = assets.where((e) => e['name'] == _nomeApk).firstOrNull;
       final apkUrl = '${apk?['browser_download_url'] ?? ''}';
       if (apkUrl.isEmpty) throw Exception('O APK da versão publicada ainda não está disponível.');
 

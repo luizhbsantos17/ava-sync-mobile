@@ -99,10 +99,16 @@ class Sync {
   static bool rodando = false;
 
   static List<Map<String, dynamic>> filtrarCursos(List<Map<String, dynamic>> cursos, int agora,
-      {List<String>? ignorar, List<String>? somente}) {
+      {List<String>? ignorar, List<String>? somente, Set<String>? ignorarIds, Set<String>? somenteIds}) {
     final ign = (ignorar ?? Cfg.ignorarCursos).map((s) => s.toLowerCase()).where((s) => s.isNotEmpty);
     final som = (somente ?? Cfg.somenteCursos).map((s) => s.toLowerCase()).where((s) => s.isNotEmpty).toList();
+    final idsIgnorados = ignorarIds ?? Cfg.cursosIgnoradosIds;
+    final idsSelecionados = somenteIds ?? Cfg.cursosSelecionadosIds;
     return cursos.where((c) {
+      final id = '${c['id']}';
+      if (idsIgnorados.contains(id)) return false;
+      if (Cfg.somenteCursosIdsAtivo && !idsSelecionados.contains(id)) return false;
+      if (idsSelecionados.isNotEmpty && !idsSelecionados.contains(id)) return false;
       final nome = '${c['fullname'] ?? ''}'.toLowerCase();
       if (som.isNotEmpty && !som.any(nome.contains)) return false;
       if (ign.any(nome.contains)) return false;
@@ -115,6 +121,7 @@ class Sync {
     Moodle? moodle,
     http.Client? externo,
     bool? baixarArquivos,
+    bool todasMaterias = false,
   }) async {
     if (rodando) throw MoodleErro('Já existe uma sincronização em andamento.');
     rodando = true;
@@ -122,14 +129,16 @@ class Sync {
       final tok = moodle == null ? await Cfg.token() : 'x';
       if (tok == null || Cfg.site.isEmpty) throw MoodleErro('Faça login primeiro.', sessao: true);
       final m = moodle ?? Moodle(Cfg.site, tok);
-      return await _rodar(m, progresso ?? (_) {}, externo, baixarArquivos ?? Cfg.baixarArquivos);
+      return await _rodar(m, progresso ?? (_) {}, externo, baixarArquivos ?? Cfg.baixarArquivos,
+          todasMaterias: todasMaterias);
     } finally {
       rodando = false;
     }
   }
 
   static Future<ResultadoSync> _rodar(
-      Moodle m, void Function(String) progresso, http.Client? externo, bool baixarGeral) async {
+      Moodle m, void Function(String) progresso, http.Client? externo, bool baixarGeral,
+      {required bool todasMaterias}) async {
     final agora = agoraSeg();
     final base = await Store.base();
     final estado = await Store.estado();
@@ -162,9 +171,29 @@ class Sync {
       return ini == 0 || ini > agora - 730 * 86400;
     }).toList();
     final cursos = filtrarCursos(todos, agora);
-    final ids = cursos.map((c) => c['id']).toList();
 
-    progresso('Lendo tarefas, provas e avisos...');
+    // A classificacao usa nome e datas do curso, sem precisar consultar atividades
+    // antigas. No sync comum, detalhes completos sao buscados apenas para o semestre
+    // atual; primeira sincronizacao e a acao manual incluem todas.
+    final atividade = <String, int>{};
+    for (final c in cursos) {
+      final id = '${c['id']}';
+      final acesso = (c['lastaccess'] as num?)?.toInt() ?? 0;
+      if (acesso > 0) atividade[id] = acesso;
+    }
+    final atuais = cursosAtuais(cursos, atividade, agora);
+    final primeiraSincronizacao = primeiraVez || estado['sync_completa'] != true;
+    final sincronizarTodos = todasMaterias || primeiraSincronizacao;
+    final escolhidos = Cfg.cursosSelecionadosIds;
+    final cursosDetalhados = sincronizarTodos
+        ? cursos
+        : cursos.where((c) => atuais['${c['id']}'] == true ||
+            (Cfg.somenteCursosIdsAtivo && escolhidos.contains('${c['id']}'))).toList();
+    final ids = cursosDetalhados.map((c) => c['id']).toList();
+
+    progresso(sincronizarTodos
+        ? 'Lendo dados de todas as matérias...'
+        : 'Lendo dados das matérias do semestre atual...');
     final assigns = mapa(await m.tentar('mod_assign_get_assignments', {}, {'courseids': ids}));
     final quizzes = mapa(await m.tentar('mod_quiz_get_quizzes_by_courses', {}, {'courseids': ids}));
     final pages = mapa(await m.tentar('mod_page_get_pages_by_courses', {}, {'courseids': ids}));
@@ -177,25 +206,6 @@ class Sync {
       'options': {'userevents': 0, 'siteevents': 0, 'timestart': agora - 150 * 86400, 'timeend': agora + 240 * 86400},
     }));
 
-    // semestre atual: so estas baixam arquivos e geram notificacoes
-    final atividade = <String, int>{};
-    void marca(dynamic cid, dynamic ts) {
-      final v = (ts as num?)?.toInt() ?? 0;
-      if (v > (atividade['$cid'] ?? 0)) atividade['$cid'] = v;
-    }
-    for (final c in cursos) {
-      marca(c['id'], c['lastaccess']);
-    }
-    for (final c in lista(assigns['courses']).map(mapa)) {
-      for (final a in lista(c['assignments']).map(mapa)) {
-        marca(c['id'], a['duedate']);
-      }
-    }
-    for (final q in lista(quizzes['quizzes']).map(mapa)) {
-      marca(q['course'], q['timeclose']);
-    }
-    final atuais = cursosAtuais(cursos, atividade, agora);
-
     final assignPorCurso = {
       for (final c in lista(assigns['courses']).map(mapa)) c['id']: lista(c['assignments']).map(mapa).toList()
     };
@@ -203,7 +213,7 @@ class Sync {
     final maxMb = Cfg.maxMb;
 
     final cursosOut = <Map<String, dynamic>>[];
-    for (final c in cursos) {
+    for (final c in cursosDetalhados) {
       final cid = c['id'];
       final nomeCurso = '${c['fullname'] ?? c['shortname'] ?? 'Curso'}';
       final atual = atuais['$cid'] ?? true;
@@ -485,12 +495,29 @@ class Sync {
         }
     ];
 
+    final cursosAtualizadosPorId = {for (final c in cursosOut) '${c['id']}': c};
+    final cursosCache = <Map<String, dynamic>>[];
+    final snapshotAnterior = await Store.snapshot();
+    final antigosPorId = {for (final c in lista(snapshotAnterior['cursos']).map(mapa)) '${c['id']}': c};
+    for (final curso in cursos) {
+      final id = '${curso['id']}';
+      final atualizado = cursosAtualizadosPorId[id];
+      if (atualizado != null) {
+        cursosCache.add(atualizado);
+      } else {
+        final anterior = antigosPorId[id];
+        if (anterior != null) {
+          cursosCache.add({...anterior, 'atual': atuais[id] ?? false});
+        }
+      }
+    }
+
     final snap = {
       'gerado_em': agora,
       'usuario': site['fullname'],
       'userid': userid,
       'site': m.site,
-      'cursos': cursosOut,
+      'cursos': cursosCache,
       'eventos': eventosOut,
     };
     await Store.salvarSnapshot(snap);
@@ -506,6 +533,7 @@ class Sync {
     estado['vistos'] = vistos;
     estado['v_avisos'] = versaoAvisos;
     estado['ultima'] = agora;
+    estado['sync_completa'] = true;
     await Store.salvarEstado(estado);
     progresso('Pronto');
     return ResultadoSync(primeiraVez ? [] : novidades, snap);

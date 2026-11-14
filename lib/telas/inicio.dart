@@ -12,6 +12,7 @@ import 'curso.dart';
 import 'tarefa.dart';
 import '../classificar.dart';
 import '../config.dart';
+import 'social.dart';
 
 class InicioTela extends StatefulWidget {
   const InicioTela({super.key});
@@ -50,6 +51,11 @@ class _InicioTelaState extends State<InicioTela> {
               ),
             ]),
             actions: [
+              IconButton(
+                tooltip: 'Abrir espaço Social',
+                icon: const Icon(Icons.forum_outlined),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SocialTela())),
+              ),
               IconButton(
                 tooltip: 'Buscar',
                 icon: const Icon(Icons.search),
