@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../estado_app.dart';
 import '../util.dart';
+import 'aulas.dart';
 import 'desempenho.dart';
 import 'perfil.dart';
 import 'qacademico_tela.dart';
@@ -20,7 +21,7 @@ class InicioTela extends StatefulWidget {
 
 class _InicioTelaState extends State<InicioTela> {
   int _aba = 0;
-  static const _titulos = ['Prazos', 'Matérias', 'Notas', 'Novidades', 'Perfil'];
+  static const _titulos = ['Prazos', 'Matérias', 'Acadêmico', 'Novidades', 'Perfil'];
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +79,12 @@ class _InicioTelaState extends State<InicioTela> {
           body: Stack(fit: StackFit.expand, children: [
             Positioned.fill(
               child: switch (_aba) {
-                0 => PrazosAba(abrirMaterias: () => setState(() => _aba = 1)),
+                0 => PrazosAba(
+                    abrirMaterias: () => setState(() => _aba = 1),
+                    abrirSemana: () {
+                      segmentoAcademico.value = 2;
+                      setState(() => _aba = 2);
+                    }),
                 1 => MateriasAba(),
                 2 => DesempenhoAba(),
                 3 => NovidadesAba(),
@@ -93,7 +99,7 @@ class _InicioTelaState extends State<InicioTela> {
             destinations: const [
               NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Prazos'),
               NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book), label: 'Matérias'),
-              NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Notas'),
+              NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Acadêmico'),
               NavigationDestination(
                   icon: Icon(Icons.notifications_none), selectedIcon: Icon(Icons.notifications), label: 'Novidades'),
               NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Perfil'),
@@ -109,7 +115,8 @@ Widget _atualizavel(Widget filho) => RefreshIndicator(onRefresh: app.sincronizar
 
 class PrazosAba extends StatelessWidget {
   final VoidCallback? abrirMaterias;
-  const PrazosAba({super.key, this.abrirMaterias});
+  final VoidCallback? abrirSemana;
+  const PrazosAba({super.key, this.abrirMaterias, this.abrirSemana});
 
   Widget _boasVindas(BuildContext context, int semana) {
     final primeiroNome = Cfg.usuarioNome.trim().split(RegExp(r'\s+')).firstOrNull;
@@ -118,10 +125,13 @@ class PrazosAba extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF392B59), Color(0xFF211A30)]),
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [
+          Color.lerp(Theme.of(context).colorScheme.surface, Theme.of(context).colorScheme.primary, 0.30)!,
+          Color.lerp(Theme.of(context).colorScheme.surface, Theme.of(context).colorScheme.primary, 0.10)!,
+        ]),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-        boxShadow: [BoxShadow(color: const Color(0xFF8C68DA).withValues(alpha: 0.14), blurRadius: 28, offset: const Offset(0, 12))],
+        boxShadow: [BoxShadow(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14), blurRadius: 28, offset: const Offset(0, 12))],
       ),
       child: Stack(children: [
         Positioned(right: -10, top: -12, child: Icon(Icons.auto_awesome_rounded, size: 96, color: Colors.white.withValues(alpha: 0.045))),
@@ -211,6 +221,7 @@ class PrazosAba extends StatelessWidget {
           _indicador(context, Icons.menu_book_rounded, '${app.cursos.length}', 'Matérias', onTap: abrirMaterias),
         ]),
       ),
+      AulasHoje(verSemana: abrirSemana),
       const SizedBox(height: 14),
     ]);
     if (itens.isEmpty) {

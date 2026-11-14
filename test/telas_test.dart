@@ -96,7 +96,7 @@ void main() {
     expect(find.textContaining('Primeira sincronização'), findsOneWidget);
 
     // notas (sem Q-Academico ainda: convite para conectar)
-    await t.tap(find.text('Notas').last);
+    await t.tap(find.text('Acadêmico').last);
     await t.pumpAndSettle();
     expect(find.text('Conectar Q-Acadêmico'), findsOneWidget);
 

@@ -422,7 +422,7 @@ class _AjustesAbaState extends State<AjustesAba> {
       secao('Sobre'),
       ListTile(
         leading: const Icon(Icons.info_outline),
-        title: Text('AVA Sync · versão 0.5.0 (build ${Atualizacao.buildInstalado})'),
+        title: Text('AVA Sync · versão 0.6.0 (build ${Atualizacao.buildInstalado})'),
         subtitle: const Text('Código aberto (MIT). Use só com a sua própria conta e respeite as regras da sua instituição.'),
       ),
     ]);

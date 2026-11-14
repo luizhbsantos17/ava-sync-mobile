@@ -23,6 +23,7 @@ class AppEstado extends ChangeNotifier {
 
   /// Q-Academico: disciplinas importadas, quando, e o aviso da ultima tentativa.
   List<Disciplina> academico = [];
+  List<Aula> horario = [];
   int academicoEm = 0;
   String? academicoAviso;
 
@@ -30,12 +31,17 @@ class AppEstado extends ChangeNotifier {
   Future<String?> Function()? atualizarAcademico;
 
   /// Guarda o que veio do Q-Academico e avisa o que mudou. Devolve quantas disciplinas.
-  Future<int> salvarAcademico(List<Disciplina> novas) async {
+  Future<int> salvarAcademico(List<Disciplina> novas, {List<Aula> horario = const []}) async {
     final mud = mudancasAcademico(academico, novas);
     academico = novas;
+    if (horario.isNotEmpty) this.horario = horario;
     academicoEm = agoraSeg();
     academicoAviso = null;
-    await QAcademico.salvar({'atualizado_em': academicoEm, 'disciplinas': [for (final d in novas) d.toJson()]});
+    await QAcademico.salvar({
+      'atualizado_em': academicoEm,
+      'disciplinas': [for (final d in novas) d.toJson()],
+      'horario': [for (final a in this.horario) a.toJson()],
+    });
     if (mud.isNotEmpty) {
       final hist = lista(estado['historico']).map(mapa).toList();
       hist.insertAll(0, [for (final t in mud) {'ts': academicoEm, 'curso': 'Q-Acadêmico', 'texto': t, 'tipo': 'nota'}]);
@@ -63,6 +69,10 @@ class AppEstado extends ChangeNotifier {
   /// Materias visiveis: so as do semestre atual, a nao ser que "ver todas" esteja ligado.
   List<Map<String, dynamic>> get cursos => Cfg.verTodas ? todosCursos : todosCursos.where(ehAtual).toList();
 
+  /// Frequencia da disciplina, contando a falta de um dia inteiro de aula.
+  Frequencia freqDe(Disciplina d) => frequencia(d,
+      minima: Cfg.frequenciaMinima.toDouble(), aulasPorDia: aulasPorDia(d.nome, horario, padrao: Cfg.faltasPorDia));
+
   /// Algo do perfil/ajustes mudou: redesenha as telas.
   void avisarMudanca() => notifyListeners();
 
@@ -89,6 +99,7 @@ class AppEstado extends ChangeNotifier {
     final qa = await QAcademico.carregar();
     academico = lista(qa['disciplinas']).map(mapa).map(Disciplina.fromJson).toList();
     academicoEm = (qa['atualizado_em'] as num?)?.toInt() ?? 0;
+    horario = lista(qa['horario']).map(mapa).map(Aula.fromJson).toList();
     carregando = false;
     notifyListeners();
   }

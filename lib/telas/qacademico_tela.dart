@@ -135,19 +135,38 @@ class ColetorQA {
         if (est == 'login') return const ResultadoQA(SituacaoQA.precisaLogin, 'Matrícula ou senha do Q-Acadêmico não aceitas.');
         await abrir('$_base${QAcademico.paginaBoletim}');
       }
+      // os links do menu dizem onde ficam boletim, diarios e horario nesta instituicao
+      final links = await _linksDoMenu();
+      final urlBoletim = links['boletim'] ?? '$_base${QAcademico.paginaBoletim}';
+      if (links['boletim'] != null) await abrir(urlBoletim);
       final boletim = await html();
+      await QAcademico.guardarPagina('boletim', boletim);
       final disc = lerBoletim(boletim);
       if (disc.isEmpty) {
-        await _guardarParaAnalise(boletim);
         return const ResultadoQA(SituacaoQA.falhou,
-            'Entrei, mas não reconheci o boletim. Em Perfil > Q-Acadêmico, use "Exportar página" e me mande o arquivo.');
+            'Entrei, mas não reconheci o boletim. Em Perfil, use "Exportar páginas do Q-Acadêmico" e me mande os arquivos.');
       }
       try {
-        await abrir('$_base${QAcademico.paginaDiarios}');
-        if (await _estado() == 'pagina') lerDiarios(await html(), disc);
+        await abrir(links['diarios'] ?? '$_base${QAcademico.paginaDiarios}');
+        if (await _estado() == 'pagina') {
+          final h = await html();
+          await QAcademico.guardarPagina('diarios', h);
+          lerDiarios(h, disc);
+        }
       } catch (_) {} // diarios sao extra: o boletim ja vale
-      final n = await app.salvarAcademico(disc);
-      return ResultadoQA(SituacaoQA.ok, 'Q-Acadêmico atualizado: $n disciplina(s).', disciplinas: n);
+      var horario = <Aula>[];
+      try {
+        await abrir(links['horario'] ?? '$_base${QAcademico.paginaHorario}');
+        if (await _estado() == 'pagina') {
+          final h = await html();
+          await QAcademico.guardarPagina('horario', h);
+          horario = lerHorario(h, disc);
+        }
+      } catch (_) {}
+      final n = await app.salvarAcademico(disc, horario: horario);
+      return ResultadoQA(SituacaoQA.ok,
+          'Q-Acadêmico atualizado: $n disciplina(s)${horario.isEmpty ? '' : ' e ${horario.length} aula(s) no horário'}.',
+          disciplinas: n);
     } catch (e) {
       return ResultadoQA(SituacaoQA.falhou, 'Falha ao ler o Q-Acadêmico: ${'$e'.replaceFirst('Exception: ', '')}');
     } finally {
@@ -155,8 +174,23 @@ class ColetorQA {
     }
   }
 
-  static String ultimaPagina = '';
-  Future<void> _guardarParaAnalise(String h) async => ultimaPagina = h;
+  /// Le os links da pagina atual (menu do Q-Academico) e escolhe boletim/diarios/horario.
+  Future<Map<String, String>> _linksDoMenu() async {
+    try {
+      await QAcademico.guardarPagina('menu', await html());
+      final r = await _js('JSON.stringify(Array.from(document.querySelectorAll("a[href]")).map(function(a){'
+          'return [a.innerText || a.title || "", a.href];}))');
+      final links = (jsonDecode(r) as List).map((e) => (norm('${e[0]}'), '${e[1]}')).where((e) => e.$2.startsWith('http'));
+      String? achar(bool Function(String) f) => links.where((e) => f(e.$1)).map((e) => e.$2).firstOrNull;
+      return {
+        'boletim': ?achar((t) => t.contains('boletim')),
+        'diarios': ?achar((t) => t.contains('diario')),
+        'horario': ?achar((t) => t.contains('horario') && !t.contains('prova')),
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
 }
 
 /// WebView invisivel (1x1) que permite atualizar o Q-Academico junto com a sincronizacao

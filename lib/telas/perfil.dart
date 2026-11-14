@@ -12,7 +12,7 @@ import '../util.dart';
 import 'ajustes.dart';
 import 'aparencia.dart';
 import 'desempenho.dart';
-import 'qacademico_tela.dart';
+import '../qacademico.dart';
 
 String nomeExibido() {
   final a = Cfg.perfilApelido;
@@ -130,16 +130,16 @@ class _PerfilAbaState extends State<PerfilAba> {
   }
 
   Future<void> _exportarPagina() async {
-    final h = ColetorQA.ultimaPagina;
-    if (h.isEmpty) {
+    final fs = await QAcademico.paginasGuardadas();
+    if (fs.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Nada para exportar: abra o Q-Acadêmico e tente importar primeiro.')));
+          content: Text('Nada para exportar: abra o Q-Acadêmico e importe primeiro.')));
       return;
     }
-    final dir = await getTemporaryDirectory();
-    final f = File('${dir.path}/qacademico_boletim.html');
-    await f.writeAsString(h);
-    await SharePlus.instance.share(ShareParams(files: [XFile(f.path)], text: 'Página do boletim do Q-Acadêmico (AVA Sync)'));
+    await SharePlus.instance.share(ShareParams(
+        files: [for (final f in fs) XFile(f.path)],
+        text: 'Páginas do Q-Acadêmico (AVA Sync). Contêm suas notas: mande só para quem for ajustar o app.'));
   }
 
   @override
@@ -157,15 +157,14 @@ class _PerfilAbaState extends State<PerfilAba> {
         }
       }
     }
-    final r = resumoAcademico(app.academico, minima: Cfg.frequenciaMinima.toDouble());
+    final emRisco = app.academico.where((d) => app.freqDe(d).emRisco).length;
+    final aulasHoje = aulasDoDia(app.horario, DateTime.now().weekday).fold<int>(0, (s, a) => s + a.aulas);
     Widget numero(String v, String rotulo) => Expanded(
           child: Column(children: [
             Text(v, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             Text(rotulo, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant), textAlign: TextAlign.center),
           ]),
         );
-    String pct(double? v) => v == null ? '-' : '${v.toStringAsFixed(0)}%';
-    String med(double? v) => v == null ? '-' : v.toStringAsFixed(1).replaceAll('.', ',');
 
     return ListView(padding: const EdgeInsets.only(bottom: 32), children: [
       const SizedBox(height: 12),
@@ -204,8 +203,8 @@ class _PerfilAbaState extends State<PerfilAba> {
             numero('${cursos.length}', 'matérias'),
             numero('$entregues', 'entregues'),
             numero('$pendentes', 'pendentes'),
-            numero(pct(r.frequencia), 'presença'),
-            numero(med(r.media), 'média'),
+            if (app.horario.isNotEmpty) numero('$aulasHoje', 'aulas hoje'),
+            if (app.academico.isNotEmpty) numero('$emRisco', 'perto do limite de faltas'),
           ]),
         ),
       ),
@@ -252,6 +251,20 @@ class _PerfilAbaState extends State<PerfilAba> {
           ),
         ),
         ListTile(
+          leading: const Icon(Icons.event_busy_outlined),
+          title: const Text('Faltar um dia conta'),
+          subtitle: const Text('Quando o horário não diz quantas aulas seguidas a disciplina tem'),
+          trailing: DropdownButton<int>(
+            value: Cfg.faltasPorDia,
+            items: [for (final n in [1, 2, 3, 4]) DropdownMenuItem(value: n, child: Text('$n falta${n == 1 ? '' : 's'}'))],
+            onChanged: (v) async {
+              await Cfg.setFaltasPorDia(v ?? 2);
+              setState(() {});
+              app.avisarMudanca();
+            },
+          ),
+        ),
+        ListTile(
           leading: const Icon(Icons.key_off_outlined),
           title: const Text('Esquecer login do Q-Acadêmico'),
           onTap: () async {
@@ -278,8 +291,8 @@ class _PerfilAbaState extends State<PerfilAba> {
       ),
       ListTile(
         leading: const Icon(Icons.bug_report_outlined),
-        title: const Text('Exportar página do Q-Acadêmico'),
-        subtitle: const Text('Se o boletim não for reconhecido, mande este arquivo para ajustar o leitor'),
+        title: const Text('Exportar páginas do Q-Acadêmico'),
+        subtitle: const Text('Boletim, diários e horário lidos, para ajustar o leitor se algo vier errado'),
         onTap: _exportarPagina,
       ),
     ]);

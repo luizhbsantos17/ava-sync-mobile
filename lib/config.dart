@@ -107,6 +107,9 @@ class Cfg {
   /// Atualiza o Q-Academico junto com a sincronizacao do AVA (com o app aberto).
   static bool get qaAuto => _p.getBool('qa_auto') ?? true;
   static Future<void> setQaAuto(bool v) => _p.setBool('qa_auto', v);
+  /// Faltar um dia de aula conta quantas faltas (quando o horario nao diz).
+  static int get faltasPorDia => _p.getInt('faltas_dia') ?? 2;
+  static Future<void> setFaltasPorDia(int v) => _p.setInt('faltas_dia', v);
   static int get frequenciaMinima => _p.getInt('freq_min') ?? 75;
   static Future<void> setFrequenciaMinima(int v) => _p.setInt('freq_min', v);
 

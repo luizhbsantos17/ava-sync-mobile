@@ -31,10 +31,15 @@ com notificações e envio de atividades. Funciona sozinho no celular, sem PC, e
 - **Agenda (Google Agenda)**: opcional, em Ajustes. Coloca prazos e provas numa agenda do celular
   e mantém atualizado (muda a data, marca ✓ quando entrega, apaga o que sumiu do AVA). Escolhendo
   uma agenda da conta Google, aparece no Google Agenda em todos os dispositivos.
-- **Notas** (aba própria): do **AVA** (livro de notas de cada matéria, por atividade e total) e do
-  **Q-Acadêmico** (média, etapas, avaliações dos diários, carga horária, faltas, % de presença e
-  de faltas, e quantas faltas ainda pode ter, pela frequência mínima escolhida — 75% por padrão).
-  Avisa nota nova, média atualizada e falta registrada.
+- **Acadêmico** (aba própria), com dados do **boletim e diários do Q-Acadêmico**:
+  - **Disciplinas**: cartão colorido por disciplina com média, faltas/limite, % de presença e
+    **quantos dias de aula ainda pode faltar** (faltar um dia conta todas as aulas seguidas daquele
+    dia, pelo horário; sem horário, o padrão é 2). Toque para ver etapas, avaliações do diário,
+    provas com nota no AVA e o simulador "E se eu faltar?".
+  - **Boletim**: tabela com etapas, média, faltas, frequência e situação.
+  - **Horário**: aulas de cada dia e a semana inteira. As **aulas de hoje** aparecem também no topo
+    de Prazos, destacando a que está acontecendo agora.
+  - Do AVA só entram notas de **prova** (as outras pontuações do AVA não são a nota oficial).
 - **Q-Acadêmico**: não tem API e bloqueia robôs, então o app **não** acessa o site sozinho por
   HTTP. Ele abre o Q-Acadêmico no navegador do próprio Android (WebView), você entra com a sua
   matrícula, e o app lê o boletim e os diários. Marcando "lembrar senha" (guardada criptografada
