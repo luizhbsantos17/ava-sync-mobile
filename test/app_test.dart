@@ -195,7 +195,10 @@ void main() {
     final m = Moodle(site, 'TOK', cliente: clienteMoodle());
     final r1 = await Sync.rodar(moodle: m, externo: clienteExterno(), baixarArquivos: true);
     final cursos = lista(r1.snapshot['cursos']).map(mapa).toList();
-    expect(cursos.map((c) => c['nome']), ['Redes de Computadores']);
+    // Biblioteca Virtual e ignorada; o curso encerrado entra, mas como semestre anterior
+    expect(cursos.map((c) => c['nome']), ['Redes de Computadores', 'Calculo Antigo']);
+    expect(cursos.map((c) => c['atual']), [true, false]);
+    cursos.removeWhere((c) => c['atual'] == false);
     expect(r1.novidades, isEmpty, reason: 'primeira sincronizacao nao notifica tudo como novo');
 
     final c = cursos.first;
@@ -288,7 +291,7 @@ void main() {
       {'fullname': 'Biblioteca Virtual', 'enddate': 0},
       {'fullname': 'Velho', 'enddate': 10},
     ];
-    expect(Sync.filtrarCursos(c, 100, ignorar: ['biblioteca'], somente: []).map((x) => x['fullname']), ['Redes 2026/2']);
+    expect(Sync.filtrarCursos(c, 100, ignorar: ['biblioteca'], somente: []).map((x) => x['fullname']), ['Redes 2026/2', 'Velho']);
     expect(Sync.filtrarCursos(c, 100, ignorar: [], somente: ['bibli']).map((x) => x['fullname']), ['Biblioteca Virtual']);
   });
 }

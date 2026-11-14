@@ -48,9 +48,10 @@ void main() {
       {'id': 3, 'fullname': 'Redes', 'startdate': agora - 95 * dia},
       {'id': 4, 'fullname': 'Comunicação', 'startdate': agora - 280 * dia},
       {'id': 5, 'fullname': 'Sem data', 'startdate': 0},
+      {'id': 6, 'fullname': 'Desenvolvimento Web I (2026/2)', 'startdate': agora + 10 * dia, 'enddate': 1},
     ];
     final r = cursosAtuais(cursos, {'5': agora - 200 * dia}, agora, manual: {});
-    expect(r, {'1': true, '2': false, '3': true, '4': false, '5': false});
+    expect(r, {'1': true, '2': false, '3': true, '4': false, '5': false, '6': true});
     final m = cursosAtuais(cursos, {}, agora, manual: {'4': true, '1': false});
     expect(m['4'], isTrue);
     expect(m['1'], isFalse);

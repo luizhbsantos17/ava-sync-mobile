@@ -78,11 +78,14 @@ class _InicioTelaState extends State<InicioTela> {
                     ),
                   ),
           ),
+          // Sem "const": as abas leem o estado do app (materias, "Semestre atual/Todas",
+          // dados da sincronizacao). Um widget const nunca e reconstruido, entao a troca so
+          // aparecia depois de sair e voltar para a aba.
           body: switch (_aba) {
-            0 => const PrazosAba(),
-            1 => const MateriasAba(),
-            2 => const NovidadesAba(),
-            _ => const AjustesAba(),
+            0 => PrazosAba(abrirMaterias: () => setState(() => _aba = 1)),
+            1 => MateriasAba(),
+            2 => NovidadesAba(),
+            _ => AjustesAba(),
           },
           bottomNavigationBar: NavigationBar(
             selectedIndex: _aba,
@@ -104,7 +107,8 @@ class _InicioTelaState extends State<InicioTela> {
 Widget _atualizavel(Widget filho) => RefreshIndicator(onRefresh: app.sincronizar, child: filho);
 
 class PrazosAba extends StatelessWidget {
-  const PrazosAba({super.key});
+  final VoidCallback? abrirMaterias;
+  const PrazosAba({super.key, this.abrirMaterias});
 
   Widget _boasVindas(BuildContext context, int semana) {
     final primeiroNome = Cfg.usuarioNome.trim().split(RegExp(r'\s+')).firstOrNull;
@@ -148,24 +152,36 @@ class PrazosAba extends StatelessWidget {
     );
   }
 
-  Widget _indicador(BuildContext context, IconData icon, String valor, String rotulo, {bool destaque = false}) {
+  /// Painel da tela inicial. Com [onTap], vira um botao (efeito de toque + seta).
+  Widget _indicador(BuildContext context, IconData icon, String valor, String rotulo,
+      {bool destaque = false, VoidCallback? onTap}) {
     final cs = Theme.of(context).colorScheme;
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 14, 10, 13),
-        decoration: BoxDecoration(
-          color: destaque ? cs.primary.withValues(alpha: 0.11) : cs.surfaceContainerLow,
+      child: Material(
+        color: destaque ? cs.primary.withValues(alpha: 0.11) : cs.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(17),
-          border: Border.all(color: (destaque ? cs.primary : cs.outlineVariant).withValues(alpha: 0.18)),
+          side: BorderSide(color: (destaque ? cs.primary : cs.outlineVariant).withValues(alpha: 0.18)),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 17, color: cs.primary),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 14, 10, 13),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, size: 17, color: cs.primary),
+            const Spacer(),
+            if (onTap != null) Icon(Icons.chevron_right_rounded, size: 16, color: cs.onSurfaceVariant),
+          ]),
           const SizedBox(height: 9),
           Text(valor, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
           const SizedBox(height: 2),
           Text(rotulo, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
-        ]),
+            ]),
+          ),
+        ),
       ),
     );
   }
@@ -174,18 +190,24 @@ class PrazosAba extends StatelessWidget {
   Widget build(BuildContext context) {
     final itens = app.prazos();
     final agora = agoraSeg();
-    final semana = itens.where((e) => (e['ts'] as int) >= agora && (e['ts'] as int) < agora + 7 * 86400).length;
-    final pendentes = itens.where((e) => e['tipo'] == 'tarefa' && mapa(e['item'])['situacao'] != 'submitted').length;
+    final daSemana = itens.where((e) => (e['ts'] as int) >= agora && (e['ts'] as int) < agora + 7 * 86400).toList();
+    final abertas = itens.where((e) => e['tipo'] == 'tarefa' && mapa(e['item'])['situacao'] != 'submitted').toList();
+    final semana = daSemana.length;
+    final pendentes = abertas.length;
+    void abrirLista(String titulo, List<Map<String, dynamic>> l, String vazio) => Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => ListaItensTela(titulo: titulo, itens: l, vazio: vazio)));
     final resumo = Column(children: [
       _boasVindas(context, semana),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(children: [
-          _indicador(context, Icons.event_available_rounded, '$semana', 'Nesta semana', destaque: true),
+          _indicador(context, Icons.event_available_rounded, '$semana', 'Nesta semana',
+              destaque: true, onTap: () => abrirLista('Nesta semana', daSemana, 'Nada nos próximos 7 dias.')),
           const SizedBox(width: 9),
-          _indicador(context, Icons.assignment_turned_in_outlined, '$pendentes', 'Tarefas abertas'),
+          _indicador(context, Icons.assignment_turned_in_outlined, '$pendentes', 'Tarefas abertas',
+              onTap: () => abrirLista('Tarefas abertas', abertas, 'Nenhuma tarefa aberta.')),
           const SizedBox(width: 9),
-          _indicador(context, Icons.menu_book_rounded, '${app.cursos.length}', 'Matérias'),
+          _indicador(context, Icons.menu_book_rounded, '${app.cursos.length}', 'Matérias', onTap: abrirMaterias),
         ]),
       ),
       const SizedBox(height: 14),
@@ -366,5 +388,27 @@ class NovidadesAba extends StatelessWidget {
         ],
       ],
     ));
+  }
+}
+
+
+/// Lista aberta pelos paineis da tela inicial ("Nesta semana", "Tarefas abertas").
+class ListaItensTela extends StatelessWidget {
+  final String titulo;
+  final List<Map<String, dynamic>> itens;
+  final String vazio;
+  const ListaItensTela({super.key, required this.titulo, required this.itens, required this.vazio});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(titulo)),
+      body: itens.isEmpty
+          ? Vazio(Icons.celebration_outlined, vazio)
+          : ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: [for (final it in itens) Card(child: ItemLinha(it, mostrarCurso: true))],
+            ),
+    );
   }
 }

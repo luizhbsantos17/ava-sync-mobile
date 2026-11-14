@@ -19,11 +19,22 @@ int? semestreDoNome(String nome) {
 Map<String, bool> cursosAtuais(List<Map<String, dynamic>> cursos, Map<String, int> atividade, int agora,
     {Map<String, dynamic>? manual}) {
   final man = manual ?? Cfg.atualManual;
-  final sems = {for (final c in cursos) '${c['id']}': semestreDoNome('${c['fullname'] ?? ''} ${c['shortname'] ?? ''}')};
-  final semMax = sems.values.whereType<int>().fold<int?>(null, (a, b) => a == null || b > a ? b : a);
-  final inicios = cursos.map((c) => (c['startdate'] as num?)?.toInt() ?? 0).where((s) => s > 0).toList();
-  final inicioMax = inicios.isEmpty ? 0 : inicios.reduce((a, b) => a > b ? a : b);
   const dia = 86400;
+  // curso que so comeca daqui a mais de um mes (ex.: proximo semestre ja criado) nao
+  // pode definir qual e o semestre "atual"
+  bool jaComecou(Map<String, dynamic> c) => ((c['startdate'] as num?)?.toInt() ?? 0) <= agora + 30 * dia;
+  final sems = {for (final c in cursos) '${c['id']}': semestreDoNome('${c['fullname'] ?? ''} ${c['shortname'] ?? ''}')};
+  final semMax = cursos
+      .where(jaComecou)
+      .map((c) => sems['${c['id']}'])
+      .whereType<int>()
+      .fold<int?>(null, (a, b) => a == null || b > a ? b : a);
+  final inicios = cursos
+      .where(jaComecou)
+      .map((c) => (c['startdate'] as num?)?.toInt() ?? 0)
+      .where((s) => s > 0)
+      .toList();
+  final inicioMax = inicios.isEmpty ? 0 : inicios.reduce((a, b) => a > b ? a : b);
   final out = <String, bool>{};
   for (final c in cursos) {
     final id = '${c['id']}';
@@ -33,10 +44,16 @@ Map<String, bool> cursosAtuais(List<Map<String, dynamic>> cursos, Map<String, in
     }
     final sem = sems[id];
     final inicio = (c['startdate'] as num?)?.toInt() ?? 0;
+    final fim = (c['enddate'] as num?)?.toInt() ?? 0;
     if (sem != null && semMax != null) {
-      out[id] = sem == semMax;
+      // semestre no nome: atual se for o mais recente (ou um ja criado para o futuro)
+      out[id] = sem >= semMax;
     } else if (inicio > 0 && inicioMax > 0) {
+      // data de inicio decide antes da data de fim: professor as vezes poe fim errado,
+      // e o Moodle tira o curso de "em andamento" mesmo sendo deste semestre
       out[id] = inicio >= inicioMax - 120 * dia;
+    } else if (fim > 0 && fim < agora - 7 * dia) {
+      out[id] = false;
     } else {
       out[id] = (atividade[id] ?? agora) >= agora - 30 * dia;
     }

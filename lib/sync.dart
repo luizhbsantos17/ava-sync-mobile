@@ -34,9 +34,7 @@ class Sync {
       final nome = '${c['fullname'] ?? ''}'.toLowerCase();
       if (som.isNotEmpty && !som.any(nome.contains)) return false;
       if (ign.any(nome.contains)) return false;
-      final fim = c['enddate'];
-      if (fim is int && fim > 0 && fim < agora) return false;
-      return true;
+      return true; // encerrado ou nao, quem decide e a deteccao de semestre atual
     }).toList();
   }
 
@@ -71,10 +69,24 @@ class Sync {
     final userid = site['userid'];
     await Cfg.setUsuarioNome('${site['fullname'] ?? ''}');
 
-    final todos = lista(mapa(await m.call('core_course_get_enrolled_courses_by_timeline_classification',
-            {'classification': 'inprogress'}))['courses'])
-        .map(mapa)
-        .toList();
+    // TODAS as materias em que a pessoa esta inscrita. A lista "em andamento" do Moodle
+    // deixa de fora curso com data de inicio no futuro, data de fim errada ou que a pessoa
+    // escondeu do painel. Quem decide o que aparece e a deteccao de semestre atual.
+    var todos = lista(await m.tentar('core_enrol_get_users_courses', null, {'userid': userid})).map(mapa).toList();
+    if (todos.isEmpty) {
+      final vistosIds = <dynamic>{};
+      for (final cl in ['inprogress', 'future', 'past', 'hidden']) {
+        final r = lista(mapa(await m.tentar('core_course_get_enrolled_courses_by_timeline_classification', {},
+                {'classification': cl}))['courses'])
+            .map(mapa);
+        todos.addAll(r.where((c) => vistosIds.add(c['id'])));
+      }
+    }
+    // cursos muito antigos (mais de ~2 anos) nem entram, para nao pesar a sincronizacao
+    todos = todos.where((c) {
+      final ini = (c['startdate'] as num?)?.toInt() ?? 0;
+      return ini == 0 || ini > agora - 730 * 86400;
+    }).toList();
     final cursos = filtrarCursos(todos, agora);
     final ids = cursos.map((c) => c['id']).toList();
 
