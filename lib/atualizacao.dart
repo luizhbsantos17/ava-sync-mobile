@@ -12,15 +12,26 @@ class AtualizacaoInfo {
   final int buildInstalado;
   final String apkUrl;
   final String releaseUrl;
+  final String versao;
+  final String notas;
 
   const AtualizacaoInfo({
     required this.build,
     required this.buildInstalado,
     required this.apkUrl,
     required this.releaseUrl,
+    this.versao = '',
+    this.notas = '',
   });
 
   bool get disponivel => build > buildInstalado;
+}
+
+/// Texto do CHANGELOG que o workflow coloca depois do cabecalho (Build/Versao/Commit).
+String notasDaRelease(String body) {
+  final partes = body.replaceAll('\r\n', '\n').split(RegExp(r'\n\s*\n'));
+  if (partes.length < 2) return '';
+  return partes.skip(1).join('\n\n').trim();
 }
 
 class Atualizacao {
@@ -60,6 +71,8 @@ class Atualizacao {
         buildInstalado: buildInstalado,
         apkUrl: apkUrl,
         releaseUrl: '${release['html_url'] ?? 'https://github.com/$_repo/releases'}',
+        versao: RegExp(r'Vers\S*o:[ \t]*([^\r\n]+)', caseSensitive: false).firstMatch(body)?.group(1)?.trim() ?? '',
+        notas: notasDaRelease(body),
       );
     } finally {
       if (cliente == null) client.close();

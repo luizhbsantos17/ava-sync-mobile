@@ -17,9 +17,27 @@ Future<void> oferecerAtualizacao(BuildContext context, AtualizacaoInfo info, {bo
     builder: (ctx) => AlertDialog(
       icon: const Icon(Icons.system_update_alt_rounded),
       title: const Text('Nova versão disponível'),
-      content: Text('A versão ${info.build} do AVA Sync está pronta (você tem a ${info.buildInstalado}).\n\n'
-          'O app baixa a atualização e o Android pede para confirmar a instalação. '
-          'Seus dados e o login continuam.'),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${info.versao.isEmpty ? 'A versão ${info.build}' : 'A versão ${info.versao} (build ${info.build})'} '
+              'do AVA Sync está pronta (você tem o build ${info.buildInstalado}).'),
+          if (info.notas.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text('O que mudou', style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            ...linhasDasNotas(info.notas).map((l) => Padding(
+                  padding: EdgeInsets.only(top: l.titulo ? 8 : 2, left: l.item ? 4 : 0),
+                  child: Text(l.texto,
+                      style: l.titulo
+                          ? TextStyle(fontWeight: FontWeight.w700, color: Theme.of(ctx).colorScheme.primary)
+                          : null),
+                )),
+          ],
+          const SizedBox(height: 14),
+          const Text('O app baixa a atualização e o Android pede para confirmar a instalação. '
+              'Seus dados e o login continuam.'),
+        ]),
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(automatico ? 'Depois' : 'Fechar')),
         FilledButton.icon(
@@ -109,4 +127,31 @@ Future<void> baixarEInstalar(BuildContext context, AtualizacaoInfo info) async {
           onPressed: () => launchUrl(Uri.parse(info.releaseUrl), mode: LaunchMode.externalApplication)),
     ));
   }
+}
+
+class LinhaNota {
+  final String texto;
+  final bool titulo;
+  final bool item;
+  const LinhaNota(this.texto, {this.titulo = false, this.item = false});
+}
+
+/// Markdown simples do CHANGELOG ("### Adicionado", "- item", **negrito**) em linhas de texto.
+List<LinhaNota> linhasDasNotas(String notas) {
+  final out = <LinhaNota>[];
+  for (final bruta in notas.split('\n')) {
+    final l = bruta.replaceAll('**', '').trimRight();
+    if (l.trim().isEmpty) continue;
+    if (l.startsWith('#')) {
+      out.add(LinhaNota(l.replaceFirst(RegExp(r'^#+\s*'), ''), titulo: true));
+    } else if (RegExp(r'^\s*[-*]\s').hasMatch(l)) {
+      out.add(LinhaNota('• ${l.replaceFirst(RegExp(r'^\s*[-*]\s+'), '')}', item: true));
+    } else if (out.isNotEmpty && out.last.item) {
+      // continuacao do item anterior (linha quebrada no CHANGELOG)
+      out[out.length - 1] = LinhaNota('${out.last.texto} ${l.trim()}', item: true);
+    } else {
+      out.add(LinhaNota(l.trim()));
+    }
+  }
+  return out;
 }

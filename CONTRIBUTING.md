@@ -13,3 +13,9 @@ Antes de convidar alguém para um repositório privado, conceda somente **Read**
 Não use Write ou Maintain para quem só precisa ler o código e reportar problemas.
 Para reforçar que a branch principal só muda após revisão, habilite nas regras do
 GitHub a exigência de pull request e bloqueie pushes diretos para `main`.
+
+## Usando IA para programar
+
+As regras para agentes de IA e para quem programa estão em [AGENTS.md](AGENTS.md).
+Peça ao seu agente para ler esse arquivo antes de começar. Toda mudança entra pelo
+`CHANGELOG.md`, em `## [Não lançado]`.

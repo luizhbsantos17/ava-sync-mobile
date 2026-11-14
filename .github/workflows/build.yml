@@ -26,6 +26,10 @@ jobs:
           channel: stable
           cache: true
 
+      # Toda versão oficial precisa de notas no CHANGELOG.md (veja AGENTS.md).
+      - name: Conferir notas da versão no CHANGELOG
+        run: bash scripts/notas_versao.sh "$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*([^+]+).*/\1/')" > /dev/null
+
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
@@ -59,7 +63,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          versao=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*([^+]+).*/\1/')
           gh release delete latest --yes --cleanup-tag || true
-          printf 'Build: %s\nCommit: %s\n\nAPK gerado automaticamente. Baixe e instale pelo celular.\n' \
-            "$GITHUB_RUN_NUMBER" "${GITHUB_SHA::7}" > release-notes.md
-          gh release create latest AVA-Sync.apk --title "AVA Sync (última versão)" --notes-file release-notes.md
+          {
+            printf 'Build: %s\nVersão: %s\nCommit: %s\n\n' "$GITHUB_RUN_NUMBER" "$versao" "${GITHUB_SHA::7}"
+            bash scripts/notas_versao.sh "$versao"
+          } > release-notes.md
+          gh release create latest AVA-Sync.apk --title "AVA Sync $versao (build $GITHUB_RUN_NUMBER)" --notes-file release-notes.md

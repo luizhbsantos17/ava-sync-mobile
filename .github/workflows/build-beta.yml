@@ -2,7 +2,7 @@ name: Gerar APK beta
 
 on:
   push:
-    branches: [feature/grupos-chat-social]
+    branches: [beta, 'feature/**']
   workflow_dispatch:
 
 permissions:
@@ -58,7 +58,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          versao=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*([^+]+).*/\1/')
           gh release delete beta --yes --cleanup-tag || true
-          printf 'Build: %s\nCommit: %s\n\nVersão de testes. Instala ao lado do AVA Sync oficial.\n' \
-            "$GITHUB_RUN_NUMBER" "${GITHUB_SHA::7}" > release-notes.md
+          {
+            printf 'Build: %s\nVersão: %s (teste)\nCommit: %s\n\n' "$GITHUB_RUN_NUMBER" "$versao" "${GITHUB_SHA::7}"
+            bash scripts/notas_versao.sh "Não lançado" 2>/dev/null \
+              || bash scripts/notas_versao.sh "$versao" 2>/dev/null \
+              || echo 'Versão de testes. Instala ao lado do AVA Sync oficial.'
+          } > release-notes.md
           gh release create beta AVA-Sync-Beta.apk --title "AVA Sync Beta (build $GITHUB_RUN_NUMBER)" --notes-file release-notes.md --prerelease
