@@ -8,6 +8,7 @@ import 'package:ava_sync_mobile/moodle.dart';
 import 'package:ava_sync_mobile/sync.dart';
 import 'package:ava_sync_mobile/telas/inicio.dart';
 import 'package:ava_sync_mobile/telas/login.dart';
+import 'package:ava_sync_mobile/tema.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -94,10 +95,29 @@ void main() {
     await t.pumpAndSettle();
     expect(find.textContaining('Primeira sincronização'), findsOneWidget);
 
-    await t.tap(find.text('Ajustes').last);
+    // notas (sem Q-Academico ainda: convite para conectar)
+    await t.tap(find.text('Notas').last);
+    await t.pumpAndSettle();
+    expect(find.text('Conectar Q-Acadêmico'), findsOneWidget);
+
+    // perfil -> aparencia -> ajustes
+    await t.tap(find.text('Perfil').last);
+    await t.pumpAndSettle();
+    expect(find.text('Editar perfil'), findsOneWidget);
+    await t.tap(find.text('Aparência'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Claro').first);
+    await t.pumpAndSettle();
+    expect(temaAtual.value.modo, 'claro');
+    await t.pageBack();
+    await t.pumpAndSettle();
+    await t.scrollUntilVisible(find.text('Ajustes'), 200, scrollable: find.byType(Scrollable).last);
+    await t.tap(find.text('Ajustes'));
     await t.pumpAndSettle();
     expect(find.text('Sincronizar automaticamente'), findsOneWidget);
-    await t.drag(find.byType(ListView).first, const Offset(0, -3000));
+    await t.drag(find.byType(ListView).last, const Offset(0, -3000));
+    await t.pumpAndSettle();
+    await t.pageBack();
     await t.pumpAndSettle();
 
     // busca

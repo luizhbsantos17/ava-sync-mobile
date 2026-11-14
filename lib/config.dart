@@ -83,6 +83,33 @@ class Cfg {
   static Map<String, dynamic> get calendarioEventos => _json('cal_eventos');
   static Future<void> setCalendarioEventos(Map<String, dynamic> m) => _p.setString('cal_eventos', jsonEncode(m));
 
+  // ---- perfil e aparencia ----
+  static String get temaJson => _p.getString('tema') ?? '';
+  static Future<void> setTemaJson(String v) => _p.setString('tema', v);
+  static String get perfilFoto => _p.getString('perfil_foto') ?? '';
+  static Future<void> setPerfilFoto(String v) => _p.setString('perfil_foto', v);
+  static String get perfilApelido => _p.getString('perfil_apelido') ?? '';
+  static Future<void> setPerfilApelido(String v) => _p.setString('perfil_apelido', v.trim());
+  static String get perfilCurso => _p.getString('perfil_curso') ?? '';
+  static Future<void> setPerfilCurso(String v) => _p.setString('perfil_curso', v.trim());
+  static String get perfilBio => _p.getString('perfil_bio') ?? '';
+  static Future<void> setPerfilBio(String v) => _p.setString('perfil_bio', v.trim());
+
+  // ---- Q-Academico ----
+  static String get qaUrl => _p.getString('qa_url') ?? '';
+  static Future<void> setQaUrl(String v) => _p.setString('qa_url', v.trim());
+  static String get qaLogin => _p.getString('qa_login') ?? '';
+  static Future<void> setQaLogin(String v) => _p.setString('qa_login', v.trim());
+  /// Senha do Q-Academico: so se a pessoa pedir para lembrar (Keystore do Android).
+  static Future<String?> qaSenha() => _seg.read(key: 'qa_senha');
+  static Future<void> setQaSenha(String? v) =>
+      v == null || v.isEmpty ? _seg.delete(key: 'qa_senha') : _seg.write(key: 'qa_senha', value: v);
+  /// Atualiza o Q-Academico junto com a sincronizacao do AVA (com o app aberto).
+  static bool get qaAuto => _p.getBool('qa_auto') ?? true;
+  static Future<void> setQaAuto(bool v) => _p.setBool('qa_auto', v);
+  static int get frequenciaMinima => _p.getInt('freq_min') ?? 75;
+  static Future<void> setFrequenciaMinima(int v) => _p.setInt('freq_min', v);
+
   // ---- semestre atual e categorias (ajustes manuais da pessoa) ----
   static bool get verTodas => _p.getBool('ver_todas') ?? false;
   static Future<void> setVerTodas(bool v) => _p.setBool('ver_todas', v);

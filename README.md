@@ -31,6 +31,21 @@ com notificações e envio de atividades. Funciona sozinho no celular, sem PC, e
 - **Agenda (Google Agenda)**: opcional, em Ajustes. Coloca prazos e provas numa agenda do celular
   e mantém atualizado (muda a data, marca ✓ quando entrega, apaga o que sumiu do AVA). Escolhendo
   uma agenda da conta Google, aparece no Google Agenda em todos os dispositivos.
+- **Notas** (aba própria): do **AVA** (livro de notas de cada matéria, por atividade e total) e do
+  **Q-Acadêmico** (média, etapas, avaliações dos diários, carga horária, faltas, % de presença e
+  de faltas, e quantas faltas ainda pode ter, pela frequência mínima escolhida — 75% por padrão).
+  Avisa nota nova, média atualizada e falta registrada.
+- **Q-Acadêmico**: não tem API e bloqueia robôs, então o app **não** acessa o site sozinho por
+  HTTP. Ele abre o Q-Acadêmico no navegador do próprio Android (WebView), você entra com a sua
+  matrícula, e o app lê o boletim e os diários. Marcando "lembrar senha" (guardada criptografada
+  no Keystore), ele entra sozinho e atualiza junto com a sincronização do AVA **com o app aberto**.
+  Se o site pedir verificação anti-robô, o app para e você resolve na tela do Q-Acadêmico. Em
+  segundo plano (app fechado) só o AVA é atualizado. Se o boletim não for reconhecido, use
+  Perfil > "Exportar página do Q-Acadêmico" para ajustar o leitor.
+- **Perfil**: foto, nome de exibição, curso, bio e um resumo (matérias, entregues, pendentes,
+  presença e média).
+- **Aparência**: temas prontos, cor principal, modo claro/escuro/sistema, cantos, tamanho do texto,
+  modo compacto e **tema em JSON** (cores de fundo, cartões e destaque) para copiar e colar.
 - **Atualização dentro do app**: ao abrir (e em segundo plano) procura versão nova, baixa o APK
   com barra de progresso e abre o instalador do Android. Não precisa desinstalar.
 - **Enviar atividade**: escolha os arquivos (e/ou texto online), digite **ENVIAR** e confirme.

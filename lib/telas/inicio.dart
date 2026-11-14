@@ -2,7 +2,9 @@ import 'package:material_ui/material_ui.dart';
 
 import '../estado_app.dart';
 import '../util.dart';
-import 'ajustes.dart';
+import 'desempenho.dart';
+import 'perfil.dart';
+import 'qacademico_tela.dart';
 import 'busca.dart';
 import 'comum.dart';
 import 'curso.dart';
@@ -18,7 +20,7 @@ class InicioTela extends StatefulWidget {
 
 class _InicioTelaState extends State<InicioTela> {
   int _aba = 0;
-  static const _titulos = ['Prazos', 'Matérias', 'Novidades', 'Ajustes'];
+  static const _titulos = ['Prazos', 'Matérias', 'Notas', 'Novidades', 'Perfil'];
 
   @override
   Widget build(BuildContext context) {
@@ -29,15 +31,7 @@ class _InicioTelaState extends State<InicioTela> {
         return Scaffold(
           appBar: AppBar(
             title: Row(children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(13),
-                  gradient: const LinearGradient(colors: [Color(0xFFB49AFF), Color(0xFF7D5AD1)]),
-                ),
-                child: const Icon(Icons.school_rounded, color: Color(0xFF171020), size: 21),
-              ),
+              GestureDetector(onTap: () => setState(() => _aba = 4), child: const Avatar(tamanho: 38)),
               const SizedBox(width: 11),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -81,21 +75,28 @@ class _InicioTelaState extends State<InicioTela> {
           // Sem "const": as abas leem o estado do app (materias, "Semestre atual/Todas",
           // dados da sincronizacao). Um widget const nunca e reconstruido, entao a troca so
           // aparecia depois de sair e voltar para a aba.
-          body: switch (_aba) {
-            0 => PrazosAba(abrirMaterias: () => setState(() => _aba = 1)),
-            1 => MateriasAba(),
-            2 => NovidadesAba(),
-            _ => AjustesAba(),
-          },
+          body: Stack(fit: StackFit.expand, children: [
+            Positioned.fill(
+              child: switch (_aba) {
+                0 => PrazosAba(abrirMaterias: () => setState(() => _aba = 1)),
+                1 => MateriasAba(),
+                2 => DesempenhoAba(),
+                3 => NovidadesAba(),
+                _ => PerfilAba(),
+              },
+            ),
+            const ColetorOculto(), // Q-Academico junto com a sincronizacao
+          ]),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _aba,
             onDestinationSelected: (i) => setState(() => _aba = i),
             destinations: const [
               NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Prazos'),
               NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book), label: 'Matérias'),
+              NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Notas'),
               NavigationDestination(
                   icon: Icon(Icons.notifications_none), selectedIcon: Icon(Icons.notifications), label: 'Novidades'),
-              NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Ajustes'),
+              NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Perfil'),
             ],
           ),
         );

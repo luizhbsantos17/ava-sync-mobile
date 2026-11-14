@@ -37,7 +37,7 @@ class Store {
     return _dados!;
   }
 
-  static Future<Map<String, dynamic>> _lerJson(String nome) async {
+  static Future<Map<String, dynamic>> lerJson(String nome) async {
     final f = File('${(await dados()).path}/$nome');
     if (!await f.exists()) return {};
     try {
@@ -47,17 +47,17 @@ class Store {
     }
   }
 
-  static Future<void> _gravarJson(String nome, Map<String, dynamic> d) async {
+  static Future<void> gravarJson(String nome, Map<String, dynamic> d) async {
     final f = File('${(await dados()).path}/$nome');
     final tmp = File('${f.path}.tmp');
     await tmp.writeAsString(jsonEncode(d));
     await tmp.rename(f.path);
   }
 
-  static Future<Map<String, dynamic>> snapshot() => _lerJson('snapshot.json');
-  static Future<void> salvarSnapshot(Map<String, dynamic> d) => _gravarJson('snapshot.json', d);
-  static Future<Map<String, dynamic>> estado() => _lerJson('estado.json');
-  static Future<void> salvarEstado(Map<String, dynamic> d) => _gravarJson('estado.json', d);
+  static Future<Map<String, dynamic>> snapshot() => lerJson('snapshot.json');
+  static Future<void> salvarSnapshot(Map<String, dynamic> d) => gravarJson('snapshot.json', d);
+  static Future<Map<String, dynamic>> estado() => lerJson('estado.json');
+  static Future<void> salvarEstado(Map<String, dynamic> d) => gravarJson('estado.json', d);
 
   static Future<void> apagarTudo() async {
     for (final d in [await base(), await dados()]) {

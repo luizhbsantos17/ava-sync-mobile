@@ -5,6 +5,7 @@ import 'classificar.dart';
 import 'config.dart';
 import 'fundo.dart';
 import 'moodle.dart';
+import 'qacademico.dart';
 import 'sync.dart';
 import 'util.dart';
 
@@ -20,6 +21,37 @@ class AppEstado extends ChangeNotifier {
 
   String? token;
 
+  /// Q-Academico: disciplinas importadas, quando, e o aviso da ultima tentativa.
+  List<Disciplina> academico = [];
+  int academicoEm = 0;
+  String? academicoAviso;
+
+  /// Preenchido pela tela inicial (WebView oculto). Devolve null se deu certo, ou a mensagem.
+  Future<String?> Function()? atualizarAcademico;
+
+  /// Guarda o que veio do Q-Academico e avisa o que mudou. Devolve quantas disciplinas.
+  Future<int> salvarAcademico(List<Disciplina> novas) async {
+    final mud = mudancasAcademico(academico, novas);
+    academico = novas;
+    academicoEm = agoraSeg();
+    academicoAviso = null;
+    await QAcademico.salvar({'atualizado_em': academicoEm, 'disciplinas': [for (final d in novas) d.toJson()]});
+    if (mud.isNotEmpty) {
+      final hist = lista(estado['historico']).map(mapa).toList();
+      hist.insertAll(0, [for (final t in mud) {'ts': academicoEm, 'curso': 'Q-Acadêmico', 'texto': t, 'tipo': 'nota'}]);
+      estado['historico'] = hist.take(300).toList();
+      await Store.salvarEstado(estado);
+      if (Cfg.notificacoes) {
+        final corpo = mud.take(6).map((t) => '• $t').join('\n');
+        try {
+          await Notif.mostrar(3, '${mud.length} novidade(s) no Q-Acadêmico', corpo);
+        } catch (_) {}
+      }
+    }
+    notifyListeners();
+    return novas.length;
+  }
+
   /// Todas as materias sincronizadas.
   List<Map<String, dynamic>> get todosCursos => lista(snap['cursos']).map(mapa).toList();
 
@@ -30,6 +62,9 @@ class AppEstado extends ChangeNotifier {
 
   /// Materias visiveis: so as do semestre atual, a nao ser que "ver todas" esteja ligado.
   List<Map<String, dynamic>> get cursos => Cfg.verTodas ? todosCursos : todosCursos.where(ehAtual).toList();
+
+  /// Algo do perfil/ajustes mudou: redesenha as telas.
+  void avisarMudanca() => notifyListeners();
 
   Future<void> alternarVerTodas() async {
     await Cfg.setVerTodas(!Cfg.verTodas);
@@ -51,6 +86,9 @@ class AppEstado extends ChangeNotifier {
     logado = token != null && Cfg.site.isNotEmpty;
     snap = await Store.snapshot();
     estado = await Store.estado();
+    final qa = await QAcademico.carregar();
+    academico = lista(qa['disciplinas']).map(mapa).map(Disciplina.fromJson).toList();
+    academicoEm = (qa['atualizado_em'] as num?)?.toInt() ?? 0;
     carregando = false;
     notifyListeners();
   }
@@ -69,6 +107,7 @@ class AppEstado extends ChangeNotifier {
       snap = r.snapshot;
       estado = await Store.estado();
       await avisar(r);
+      await _sincronizarAcademico();
     } on MoodleErro catch (e) {
       erro = e.msg;
       if (e.sessao) {
@@ -80,6 +119,19 @@ class AppEstado extends ChangeNotifier {
     } finally {
       sincronizando = false;
       notifyListeners();
+    }
+  }
+
+  /// Q-Academico junto com o AVA: so com o app aberto e se a pessoa ja configurou.
+  Future<void> _sincronizarAcademico() async {
+    final f = atualizarAcademico;
+    if (f == null || !Cfg.qaAuto || Cfg.qaLogin.isEmpty) return;
+    progresso = 'Lendo Q-Acadêmico...';
+    notifyListeners();
+    try {
+      academicoAviso = await f();
+    } catch (e) {
+      academicoAviso = 'Falha ao ler o Q-Acadêmico: $e';
     }
   }
 

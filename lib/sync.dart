@@ -16,7 +16,37 @@ const situacoes = {
   'reopened': 'Reaberta',
 };
 
-const versaoAvisos = 2;
+const versaoAvisos = 3; // subir quando surgir um tipo novo de aviso (a 1a sincronizacao so registra)
+
+/// Livro de notas do Moodle -> itens {nome, tipo, nota, max, pct, feedback, cmid}.
+/// O total da materia vem por ultimo, com tipo "course".
+List<Map<String, dynamic>> notasDoLivro(Map<String, dynamic> livro) {
+  final ug = lista(livro['usergrades']).map(mapa).firstOrNull ?? const <String, dynamic>{};
+  final out = <Map<String, dynamic>>[];
+  for (final g in lista(ug['gradeitems']).map(mapa)) {
+    final tipo = '${g['itemtype'] ?? ''}';
+    if (tipo == 'category') continue;
+    final nome = tipo == 'course' ? 'Total da matéria' : '${g['itemname'] ?? ''}'.trim();
+    if (nome.isEmpty) continue;
+    String txt(dynamic v) {
+      final t = semHtml('${v ?? ''}').trim();
+      return t == '-' ? '' : t;
+    }
+    out.add({
+      'nome': nome,
+      'tipo': tipo,
+      'modulo': g['itemmodule'],
+      'cmid': g['cmid'],
+      'nota': txt(g['gradeformatted']),
+      'bruta': g['graderaw'],
+      'max': g['grademax'],
+      'pct': txt(g['percentageformatted']),
+      'feedback': txt(g['feedback']),
+    });
+  }
+  out.sort((a, b) => (a['tipo'] == 'course' ? 1 : 0).compareTo(b['tipo'] == 'course' ? 1 : 0));
+  return out;
+}
 
 /// Compara a tarefa com o que ja foi visto e devolve as novidades (texto + tipo).
 /// Registra as chaves em [vistos]. Com [silencioso], so registra.
@@ -407,8 +437,29 @@ class Sync {
         }
       }
 
+      // 5) notas do AVA (livro de notas da materia)
+      final livro = mapa(await m.tentar('gradereport_user_get_grade_items', {}, {'courseid': cid, 'userid': userid}));
+      final notasOut = notasDoLivro(livro);
+      for (final n in notasOut) {
+        // tarefas ja avisam a nota por mudancasTarefa
+        if (n['modulo'] == 'assign' || '${n['nota']}'.isEmpty) continue;
+        final chave = 'gnota:$cid:${n['nome']}:${n['nota']}';
+        if (!vistos.containsKey(chave) && !silencioso && atual) {
+          novidades.add({
+            'ts': agora,
+            'curso': nomeCurso,
+            'texto': n['tipo'] == 'course'
+                ? 'Total da matéria no AVA: ${n['nota']}'
+                : 'Nota publicada em ${n['nome']}: ${n['nota']}',
+            'tipo': 'nota',
+          });
+        }
+        vistos[chave] = agora;
+      }
+
       cursosOut.add({
         'id': cid,
+        'notas': notasOut,
         'nome': nomeCurso,
         'atual': atual,
         'inicio': c['startdate'],
