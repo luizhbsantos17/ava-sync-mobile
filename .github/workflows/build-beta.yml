@@ -3,6 +3,11 @@ name: Gerar APK beta
 on:
   push:
     branches: [beta, 'feature/**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.agents/**'
+      - '.claude/**'
   workflow_dispatch:
 
 permissions:

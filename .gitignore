@@ -56,3 +56,4 @@ android/key.properties
 /server/tls/
 /social-config.json
 /social-supabase-config.json
+/.claude/settings.local.json

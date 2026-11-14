@@ -17,5 +17,8 @@ GitHub a exigência de pull request e bloqueie pushes diretos para `main`.
 ## Usando IA para programar
 
 As regras para agentes de IA e para quem programa estão em [AGENTS.md](AGENTS.md).
+O contexto do projeto (o que está pronto, decisões, arquitetura) fica em
+[docs/contexto/](docs/contexto/README.md) e as receitas de cada tipo de tarefa em
+`.agents/skills/`.
 Peça ao seu agente para ler esse arquivo antes de começar. Toda mudança entra pelo
 `CHANGELOG.md`, em `## [Não lançado]`.

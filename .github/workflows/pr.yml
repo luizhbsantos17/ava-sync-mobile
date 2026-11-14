@@ -1,0 +1,43 @@
+name: Conferir pull request
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: CHANGELOG atualizado
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'sem-changelog') }}
+        run: |
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qx 'CHANGELOG.md'; then
+            echo "CHANGELOG.md alterado."
+          else
+            echo "::error::Escreva a mudança em '## [Não lançado]' no CHANGELOG.md (veja .agents/skills/changelog). Se não afeta quem usa o app, peça a label 'sem-changelog'."
+            exit 1
+          fi
+
+      - name: Nenhum arquivo proibido
+        run: |
+          proibidos=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -Ei '\.(jks|keystore)$|key\.properties$|social-.*config\.json$|^server/(data|tls)/|\.env$' || true)
+          if [ -n "$proibidos" ]; then
+            echo "::error::Arquivos que não podem ir para o Git: $proibidos"
+            exit 1
+          fi
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
