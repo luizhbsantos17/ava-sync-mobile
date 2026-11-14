@@ -63,7 +63,9 @@ List<List<String>> grade(dom.Element tabela) {
 
     for (final td in tr.children.where((e) => e.localName == 'td' || e.localName == 'th')) {
       consumirPendentes();
-      final texto = limpar(td.text);
+      final titulo = limpar(td.querySelector('[title]')?.attributes['title'] ?? '');
+      final textoBase = limpar(td.text);
+      final texto = titulo.isEmpty || norm(textoBase).contains(norm(titulo)) ? textoBase : '$textoBase $titulo';
       final cs = int.tryParse(td.attributes['colspan'] ?? '') ?? 1;
       final rs = int.tryParse(td.attributes['rowspan'] ?? '') ?? 1;
       for (var i = 0; i < cs.clamp(1, 50); i++) {
@@ -115,11 +117,13 @@ double? numero(String? s) {
 class Disciplina {
   String nome;
   String codigo;
+  String pauta; // COD_PAUTA do Q-Academico: liga boletim e diario sem depender do nome
   String professor;
   double? carga; // carga horaria como o Q-Academico mostra
   double? aulas; // total de aulas previstas (quando a pagina mostra)
   double? faltas;
-  double? frequencia; // % informado pelo Q-Academico
+  double? frequencia; // % de presenca informado pelo Q-Academico
+  double? minima; // % de presenca obrigatorio informado pelo Q-Academico
   String media;
   String situacao;
   List<Map<String, dynamic>> etapas; // {rotulo, nota, faltas}
@@ -128,11 +132,13 @@ class Disciplina {
   Disciplina({
     required this.nome,
     this.codigo = '',
+    this.pauta = '',
     this.professor = '',
     this.carga,
     this.aulas,
     this.faltas,
     this.frequencia,
+    this.minima,
     this.media = '',
     this.situacao = '',
     List<Map<String, dynamic>>? etapas,
@@ -143,11 +149,13 @@ class Disciplina {
   Map<String, dynamic> toJson() => {
         'nome': nome,
         'codigo': codigo,
+        'pauta': pauta,
         'professor': professor,
         'carga': carga,
         'aulas': aulas,
         'faltas': faltas,
         'frequencia': frequencia,
+        'minima': minima,
         'media': media,
         'situacao': situacao,
         'etapas': etapas,
@@ -157,11 +165,13 @@ class Disciplina {
   factory Disciplina.fromJson(Map<String, dynamic> j) => Disciplina(
         nome: '${j['nome'] ?? ''}',
         codigo: '${j['codigo'] ?? ''}',
+        pauta: '${j['pauta'] ?? ''}',
         professor: '${j['professor'] ?? ''}',
         carga: (j['carga'] as num?)?.toDouble(),
         aulas: (j['aulas'] as num?)?.toDouble(),
         faltas: (j['faltas'] as num?)?.toDouble(),
         frequencia: (j['frequencia'] as num?)?.toDouble(),
+        minima: (j['minima'] as num?)?.toDouble(),
         media: '${j['media'] ?? ''}',
         situacao: '${j['situacao'] ?? ''}',
         etapas: lista(j['etapas']).map(mapa).toList(),
@@ -186,31 +196,37 @@ class Frequencia {
 }
 
 /// [aulasPorDia]: quantas aulas seguidas a disciplina tem num dia (do horario, ou o
-/// padrao dos ajustes). Uma falta no dia conta todas elas.
+/// padrao dos ajustes). Uma falta no dia conta todas elas. O % obrigatorio do proprio
+/// Q-Academico (quando lido do diario) vale mais que [minima].
 Frequencia frequencia(Disciplina d, {double minima = 75, int aulasPorDia = 2}) {
+  final min = d.minima ?? minima;
   final total = (d.aulas ?? 0) > 0 ? d.aulas : d.carga;
   final faltas = d.faltas ?? 0;
   double? pres = d.frequencia;
   if (pres == null && total != null && total > 0) pres = (100 * (1 - faltas / total)).clamp(0, 100).toDouble();
-  final limite = total == null || total <= 0 ? null : (total * (100 - minima) / 100).floor();
+  final limite = total == null || total <= 0 ? null : (total * (100 - min) / 100).floor();
   return Frequencia(pres, pres == null ? null : 100 - pres, limite, limite == null ? null : limite - faltas.ceil(),
       aulasPorDia < 1 ? 1 : aulasPorDia);
 }
 
-// rotulo de etapa: "1a etapa", "2o bimestre", "n1", "e2", "etapa 3"...
+// rotulo de etapa: "1a etapa", "2o bimestre", "n1", "f1", "etapa 3"...
 final _reEtapa = RegExp(r'etapa|bimestre|trimestre|\b[nef]\s?\d\b|\b\d\s?[ao]\b|\bav\s?\d\b|\bp\s?\d\b');
-final _reRec = RegExp(r'\brec|final|exame|\bef\b|\bpf\b');
+final _reRec = RegExp(r'\brec|exame|\bef\b|\bpf\b');
 
-/// Le o boletim (qualquer tabela com cabecalho "Disciplina" + faltas/frequencia/carga).
+/// Celulas "folha" de uma linha (sem tabela dentro): as tabelas de layout do Q-Academico
+/// embrulham a pagina inteira e nao podem ser confundidas com o boletim.
+bool _folha(dom.Element t) => t.querySelector('table') == null;
+
+/// Le o boletim do Q-Academico (cabecalho "Disciplina" ou, no IFES, "Componente Curricular").
 List<Disciplina> lerBoletim(String pagina) {
   final doc = html.parse(pagina);
   final out = <Disciplina>[];
-  for (final t in doc.querySelectorAll('table')) {
+  for (final t in doc.querySelectorAll('table').where(_folha)) {
     final g = grade(t);
     final h = g.indexWhere((l) {
       final n = l.map(norm).toList();
-      return n.any((c) => c.contains('disciplina')) &&
-          n.any((c) => c.contains('falta') || c.contains('freq') || c.contains('carga'));
+      return n.any((c) => c.contains('disciplina') || c.contains('componente curricular')) &&
+          n.any((c) => c.contains('falta') || c.contains('freq') || c.contains('carga') || c == 'ch');
     });
     if (h < 0) continue;
     // cabecalho em duas linhas (ex.: "1a Etapa" sobre "Nota | Faltas" ou "N | F")
@@ -225,49 +241,82 @@ List<Disciplina> lerBoletim(String pagina) {
       inicio++;
     }
     int col(bool Function(String) f) => rotulos.indexWhere(f);
-    final cNome = col((r) => r.contains('disciplina') && !r.contains('cod'));
+    final cNome = col((r) => (r.contains('disciplina') || r.contains('componente curricular')) && !r.contains('cod'));
     if (cNome < 0) continue;
     final cCod = col((r) => r.contains('cod'));
     final cProf = col((r) => r.contains('professor') || r.contains('docente'));
-    final cCarga = col((r) => r.contains('carga') || RegExp(r'\bc\s?h\b').hasMatch(r));
+    final cCarga = col((r) => r.contains('carga') || r == 'ch' || RegExp(r'\bc\s?h\b').hasMatch(r));
     final cAulas = col((r) => r.contains('aula') && !r.contains('falta'));
     final cFreq = col((r) => r.contains('freq') || r == '%');
     final cFaltas = col((r) =>
-        r.contains('falta') && !r.contains('freq') && (r.contains('total') || !_reEtapa.hasMatch(r.replaceAll('total', ''))));
-    var cMedia = col((r) => r == 'mf' || r.contains('media final') || r.contains('nota final') || r.contains('resultado'));
-    if (cMedia < 0) cMedia = col((r) => r.contains('media'));
+        r.contains('falta') &&
+        !r.contains('freq') &&
+        (r.contains('total') || r.startsWith('t faltas') || !_reEtapa.hasMatch(r.replaceAll('total', ''))) &&
+        r != 'f');
+    // MF (media final oficial) primeiro; "M Final" so se MF estiver vazio
+    final cMedia = col((r) => r == 'mf' || r.startsWith('mf ') || r.contains('media final') || r.contains('nota final'));
+    var cMediaAlt = col((r) => r == 'm final' || r == 'media' || r.contains('resultado'));
+    if (cMediaAlt == cMedia) cMediaAlt = -1;
     final cSit = col((r) => r.contains('situa') || r == 'sit');
-    final usadas = {cNome, cCod, cProf, cCarga, cAulas, cFreq, cFaltas, cMedia, cSit};
+    final cTurma = col((r) => r == 'turma');
+    final usadas = {cNome, cCod, cProf, cCarga, cAulas, cFreq, cFaltas, cMedia, cMediaAlt, cSit, cTurma};
 
-    // colunas de etapa: agrupa nota e faltas da mesma etapa
+    // colunas de etapa: agrupa nota e faltas da mesma etapa; um "F" solto e a falta da
+    // etapa logo a esquerda (IFES: "NS | F | EF | F")
     final etapas = <String, Map<String, int>>{};
+    String? ultima;
     for (var i = 0; i < rotulos.length; i++) {
-      if (usadas.contains(i)) continue;
+      if (usadas.contains(i)) {
+        ultima = null;
+        continue;
+      }
       final r = rotulos[i];
+      if ((r == 'f' || r == 'faltas' || r == 'falta') && ultima != null) {
+        etapas[ultima]!['faltas'] = i;
+        continue;
+      }
       final ehRec = _reRec.hasMatch(r);
-      if (!_reEtapa.hasMatch(r) && !ehRec) continue;
+      final ehNs = r == 'ns' || r.startsWith('ns ') || r.contains('nota do semestre');
+      final ehEf = r == 'ef' || r.startsWith('ef ') || r.contains('exame final');
+      if (!_reEtapa.hasMatch(r) && !ehRec && !ehNs && !ehEf) {
+        ultima = null;
+        continue;
+      }
       var tipo = 'nota';
       String chave;
-      final compacto = RegExp(r'^([nf])\s?(\d)$').firstMatch(r); // N1 / F1
-      if (compacto != null) {
-        tipo = compacto[1] == 'f' ? 'faltas' : 'nota';
-        chave = '${compacto[2]}a etapa';
+      if (ehNs) {
+        chave = 'Nota do semestre';
+      } else if (ehEf) {
+        chave = 'Exame final';
       } else {
-        if (RegExp(r'\b(faltas?|f)$').hasMatch(r)) tipo = 'faltas';
-        chave = limpar(r.replaceAll(RegExp(r'\b(nota|notas|n|faltas?|f)$'), ''));
-        if (chave.isEmpty) chave = r;
+        final compacto = RegExp(r'^([nf])\s?(\d)$').firstMatch(r); // N1 / F1
+        if (compacto != null) {
+          tipo = compacto[1] == 'f' ? 'faltas' : 'nota';
+          chave = '${compacto[2]}a etapa';
+        } else {
+          if (RegExp(r'\b(faltas?|f)$').hasMatch(r)) tipo = 'faltas';
+          chave = limpar(r.replaceAll(RegExp(r'\b(nota|notas|n|faltas?|f)$'), ''));
+          if (chave.isEmpty) chave = r;
+        }
+        // "1a etapa" e "etapa 1" viram a mesma coisa
+        final num = RegExp(r'(\d)').firstMatch(chave)?[1];
+        if (!ehRec && num != null && chave.contains(RegExp(r'etapa|\b[nef]\s?\d\b'))) chave = '${num}a etapa';
       }
-      // "1a etapa" e "etapa 1" viram a mesma coisa
-      final num = RegExp(r'(\d)').firstMatch(chave)?[1];
-      if (!ehRec && num != null && chave.contains(RegExp(r'etapa|\b[ne]\s?\d\b'))) chave = '${num}a etapa';
       etapas.putIfAbsent(chave, () => {})[tipo] = i;
+      ultima = chave;
     }
 
+    final linhas = t.querySelectorAll('tr').where((tr) => _tabelaDe(tr) == t).toList();
     String cel(List<String> l, int i) => i >= 0 && i < l.length ? l[i] : '';
-    for (final l in g.skip(inicio)) {
+    for (var li = inicio; li < g.length; li++) {
+      final l = g[li];
       final nome = cel(l, cNome);
       final n = norm(nome);
-      if (nome.isEmpty || n.contains('disciplina') || n.startsWith('total') || (numero(nome) != null && nome.length < 4)) {
+      if (nome.isEmpty ||
+          n.contains('disciplina') ||
+          n.contains('componente curricular') ||
+          n.startsWith('total') ||
+          (numero(nome) != null && nome.length < 4)) {
         continue;
       }
       var codigo = cel(l, cCod);
@@ -278,15 +327,22 @@ List<Disciplina> lerBoletim(String pagina) {
         if (codigo.isEmpty) codigo = m[1]!;
         nomeLimpo = m[2]!;
       }
+      // "Redes de Computadores - G 1": o grupo da turma nao faz parte do nome
+      nomeLimpo = limpar(nomeLimpo.replaceFirst(RegExp(r'\s+-\s+G\s*\d+\s*$', caseSensitive: false), ''));
+      // COD_PAUTA escondido na linha (<q_latente value="COD_PAUTA=900103">)
+      final tr = _linhaComTexto(linhas, nome);
+      final pauta = RegExp(r'COD_PAUTA=(\d+)').firstMatch(tr?.outerHtml ?? '')?[1] ?? '';
+      final mf = _valor(cel(l, cMedia));
       out.add(Disciplina(
         nome: nomeLimpo,
         codigo: codigo,
+        pauta: pauta,
         professor: cel(l, cProf),
         carga: numero(cel(l, cCarga)),
         aulas: cAulas == cCarga ? null : numero(cel(l, cAulas)),
         faltas: numero(cel(l, cFaltas)),
         frequencia: numero(cel(l, cFreq)),
-        media: _valor(cel(l, cMedia)),
+        media: mf.isNotEmpty ? mf : _valor(cel(l, cMediaAlt)),
         situacao: cel(l, cSit),
         etapas: [
           for (final e in etapas.entries)
@@ -302,6 +358,14 @@ List<Disciplina> lerBoletim(String pagina) {
     if (out.isNotEmpty) break; // a primeira tabela que deu certo e o boletim
   }
   return out;
+}
+
+dom.Element? _linhaComTexto(List<dom.Element> linhas, String texto) {
+  for (final tr in linhas) {
+    final primeira = tr.children.where((e) => e.localName == 'td' || e.localName == 'th').firstOrNull;
+    if (primeira != null && limpar(primeira.text) == texto) return tr;
+  }
+  return null;
 }
 
 String _valor(String s) => s == '-' || s == '--' ? '' : s;
@@ -325,25 +389,149 @@ String _rotulo(String s) {
 
 // ---------------------------------------------------------------- diarios
 
-/// Le as avaliacoes dos diarios: tabelas com "avaliacao/descricao" + "nota". A disciplina
-/// de cada tabela e o ultimo nome de disciplina (do boletim) que aparece antes dela.
-void lerDiarios(String pagina, List<Disciplina> disciplinas) {
-  if (disciplinas.isEmpty) return;
+/// Quanto foi lido dos diarios.
+class LeituraDiarios {
+  final int disciplinas; // disciplinas com frequencia/faltas lidas
+  final int avaliacoes; // avaliacoes (com ou sem nota) lidas
+  const LeituraDiarios(this.disciplinas, this.avaliacoes);
+  bool get vazia => disciplinas == 0 && avaliacoes == 0;
+}
+
+/// Le frequencia, faltas, aulas previstas, professor e avaliacoes dos diarios.
+///
+/// IFES: cada diario e uma linha "900102 - 20262.BSI.5 - Nome (30H) - PROFESSOR" com uma
+/// tabela de frequencia ao lado, seguida (as vezes) de "Nota do Semestre" com linhas
+/// "data, Prova: descricao | Peso: x | Nota Maxima: y | Nota: z".
+LeituraDiarios lerDiarios(String pagina, List<Disciplina> disciplinas) {
+  if (disciplinas.isEmpty) return const LeituraDiarios(0, 0);
   final doc = html.parse(pagina);
+  Disciplina? atual;
+  var lendoNotas = false;
+  final comFrequencia = <Disciplina>{};
+  var avaliacoes = 0;
+  final reCab = RegExp(r'^(\d+)\s*-\s*\S+\s*-\s*(.+?)\s*\(\s*(\d+)\s*h\s*\)\s*(?:-\s*(.+))?$', caseSensitive: false);
+
+  Disciplina? achar(String pauta, String nome) {
+    for (final d in disciplinas) {
+      if (d.pauta.isNotEmpty && d.pauta == pauta) return d;
+    }
+    final n = norm(nome);
+    for (final d in disciplinas) {
+      if (norm(d.nome) == n) return d;
+    }
+    for (final d in disciplinas) {
+      final dn = norm(d.nome);
+      if (dn.isNotEmpty && (dn.startsWith(n) || n.startsWith(dn))) return d;
+    }
+    return null;
+  }
+
+  // so linhas de tabelas "folha" e as linhas de cabecalho de diario: as tabelas de
+  // layout repetem o texto da pagina inteira e confundiriam a leitura
+  for (final tr in doc.querySelectorAll('tr')) {
+    final celulas = tr.children.where((e) => e.localName == 'td' || e.localName == 'th').toList();
+    if (celulas.isEmpty) continue;
+    final primeira = celulas.first;
+
+    final cab = primeira.querySelector('strong');
+    if (cab != null && primeira.querySelector('table') == null) {
+      final m = reCab.firstMatch(limpar(cab.text));
+      if (m != null) {
+        atual = achar(m[1]!, m[2]!);
+        lendoNotas = false;
+        final d = atual;
+        if (d != null) {
+          if (d.pauta.isEmpty) d.pauta = m[1]!;
+          d.carga ??= numero(m[3]);
+          if (d.professor.isEmpty && m[4] != null) d.professor = _nomeProprio(m[4]!);
+        }
+        continue;
+      }
+    }
+    final d = atual;
+    if (d == null) continue;
+
+    // "Nota do Semestre" (titulo do bloco de avaliacoes)
+    final titulo = primeira.children.where((e) => e.localName == 'div').firstOrNull;
+    if (celulas.length == 1 && titulo != null && norm(titulo.text).contains('nota do semestre')) {
+      lendoNotas = true;
+      continue;
+    }
+    if (celulas.any((c) => c.querySelector('table') != null)) continue;
+
+    final textos = celulas.map((e) => limpar(e.text)).toList();
+    if (celulas.length == 2) {
+      final rotulo = norm(textos[0]);
+      final valor = textos[1];
+      if (rotulo.contains('numero de aulas previsto') || rotulo.contains('total de aulas previsto')) {
+        d.aulas = numero(valor) ?? d.aulas;
+        comFrequencia.add(d);
+      } else if (rotulo == 'faltas') {
+        d.faltas = numero(valor) ?? d.faltas;
+        comFrequencia.add(d);
+      } else if (rotulo.contains('presenca obrigatorio')) {
+        d.minima = numero(valor) ?? d.minima;
+      } else if (rotulo.contains('presenca') && rotulo.contains('ministradas')) {
+        d.frequencia = numero(valor) ?? d.frequencia; // referencia do historico escolar
+      } else if (rotulo.contains('carga horaria prevista')) {
+        d.carga ??= numero(valor);
+      }
+      continue;
+    }
+
+    if (!lendoNotas) continue;
+    final iNota = textos.indexWhere((s) => RegExp(r'^nota\s*:').hasMatch(s.toLowerCase()));
+    if (iNota < 0) continue;
+    String depois(String s) => limpar(s.replaceFirst(RegExp(r'^[^:]*:\s*'), ''));
+    final nota = depois(textos[iNota]);
+    final max = depois(textos.firstWhere((s) => norm(s).startsWith('nota maxima'), orElse: () => ''));
+    final peso = depois(textos.firstWhere((s) => norm(s).startsWith('peso'), orElse: () => ''));
+    final desc = textos.firstWhere(
+        (s) => s.isNotEmpty && !RegExp(r'^(peso|nota)', caseSensitive: false).hasMatch(s.trim()),
+        orElse: () => '');
+    final data = RegExp(r'\d{2}/\d{2}/\d{4}').firstMatch(desc)?[0] ?? '';
+    final descricao = limpar(desc
+        .replaceFirst(RegExp(r'^\s*\d{2}/\d{2}/\d{4}(\s+\d{1,2}:\d{2}(:\d{2})?)?\s*,?\s*'), '')
+        .replaceFirst(RegExp(r'^(prova|avaliacao|avaliação)\s*:\s*', caseSensitive: false), ''));
+    if (descricao.isEmpty) continue;
+    d.avaliacoes.add({
+      'descricao': descricao,
+      'nota': nota,
+      'max': max,
+      'peso': peso,
+      'data': data,
+      'etapa': 'Nota do semestre',
+    });
+    avaliacoes++;
+  }
+
+  // Formato antigo: tabelas com cabecalho "Avaliacao/Descricao" + "Nota".
+  if (avaliacoes == 0) avaliacoes = _diariosEmTabela(doc, disciplinas);
+  return LeituraDiarios(comFrequencia.length, avaliacoes);
+}
+
+/// "PROFESSOR EXEMPLO UM" -> "Professor Exemplo Um"
+String _nomeProprio(String s) => limpar(s)
+    .split(' ')
+    .map((p) => p.isEmpty ? p : (p.length <= 2 && p == p.toLowerCase() ? p : p[0].toUpperCase() + p.substring(1).toLowerCase()))
+    .join(' ')
+    .replaceAllMapped(RegExp(r'\b(Da|De|Do|Das|Dos|E)\b'), (m) => m[0]!.toLowerCase());
+
+int _diariosEmTabela(dom.Document doc, List<Disciplina> disciplinas) {
+  var lidas = 0;
   final textoTodo = norm(doc.body?.text ?? '');
   var cursor = 0;
-  for (final t in doc.querySelectorAll('table')) {
-    if (t.querySelector('table') != null) continue; // so tabelas "folha"
+  for (final t in doc.querySelectorAll('table').where(_folha)) {
     final g = grade(t);
     final h = g.indexWhere((l) {
       final n = l.map(norm).toList();
       return n.any((c) => c.contains('avalia') || c.contains('descri')) && n.any((c) => c.contains('nota'));
     });
     if (h < 0) continue;
-    final inicioTabela = _posicao(textoTodo, norm(t.text), cursor);
-    if (inicioTabela < 0) continue;
-    cursor = inicioTabela;
-    final antes = textoTodo.substring(0, inicioTabela);
+    final inicio = _posicao(textoTodo, norm(t.text), cursor);
+    if (inicio < 0) continue;
+    cursor = inicio;
+    final antes = textoTodo.substring(0, inicio);
     Disciplina? dono;
     var melhor = -1;
     for (final d in disciplinas) {
@@ -355,7 +543,8 @@ void lerDiarios(String pagina, List<Disciplina> disciplinas) {
         }
       }
     }
-    if (dono == null) continue;
+    final d = dono;
+    if (d == null) continue;
     final r = g[h].map(norm).toList();
     int col(bool Function(String) f) => r.indexWhere(f);
     final cDesc = col((c) => c.contains('avalia') || c.contains('descri'));
@@ -370,7 +559,7 @@ void lerDiarios(String pagina, List<Disciplina> disciplinas) {
       if (desc.isEmpty || (norm(desc).contains('avalia') && cel(l, cNota).isEmpty) || norm(desc).startsWith('total')) {
         continue;
       }
-      dono.avaliacoes.add({
+      d.avaliacoes.add({
         'descricao': desc,
         'nota': _valor(cel(l, cNota)),
         'max': cel(l, cMax),
@@ -378,8 +567,10 @@ void lerDiarios(String pagina, List<Disciplina> disciplinas) {
         'data': cel(l, cData),
         'etapa': cel(l, cEtapa),
       });
+      lidas++;
     }
   }
+  return lidas;
 }
 
 int _posicao(String todo, String trecho, int desde) {
@@ -399,7 +590,7 @@ class Aula {
   final String inicio; // "07:00"
   final String fim; // "08:40"
   final String disciplina; // nome da disciplina do boletim (ou o texto da celula)
-  final String detalhe; // sala, turma... (o resto do texto)
+  final String detalhe; // sala, turma...
   final int aulas; // quantos horarios seguidos (= faltas se faltar)
   const Aula(this.dia, this.inicio, this.fim, this.disciplina, this.detalhe, this.aulas);
 
@@ -416,43 +607,78 @@ class Aula {
   }
 }
 
-/// Le a grade de horario: tabela com dias da semana no cabecalho e horarios na 1a coluna.
+int? _diaHorario(String texto) {
+  final n = norm(texto);
+  final nome = _diasNorm.indexWhere((d) => n.startsWith(d));
+  if (nome >= 0) return nome + 1;
+  // IFES: "2a-feira" e segunda ... "7a-feira"/sabado; "1a-feira" seria domingo.
+  final ordinal = RegExp(r'^([1-7])\s?a?\s?[- ]?\s?feira').firstMatch(n);
+  if (ordinal == null) return null;
+  return (int.parse(ordinal[1]!) + 5) % 7 + 1;
+}
+
+/// Siglas da legenda do horario: "RC - BSI.26 - Redes de Computadores - Professor".
+Map<String, String> _legendaHorario(dom.Document doc) {
+  final out = <String, String>{};
+  for (final td in doc.querySelectorAll('td')) {
+    if (td.querySelector('table') != null) continue;
+    final m = RegExp(r'^([A-Z0-9]{1,8})\s+-\s+[A-Z0-9.]+\s+-\s+(.+?)(?:\s+-\s+[^-]+)?$').firstMatch(limpar(td.text));
+    if (m != null) out[m[1]!] = m[2]!;
+  }
+  return out;
+}
+
+/// Le a grade de horario (dias por nome ou "2a-FEIRA", horarios com "-" ou "~").
 List<Aula> lerHorario(String pagina, List<Disciplina> disciplinas) {
   final doc = html.parse(pagina);
-  for (final t in doc.querySelectorAll('table')) {
-    if (t.querySelector('table') != null) continue;
-    final g = grade(t);
-    final h = g.indexWhere((l) => l.map(norm).where((c) => _diasNorm.any(c.startsWith)).length >= 3);
+  final legenda = _legendaHorario(doc);
+  for (final t in doc.querySelectorAll('table').where(_folha)) {
+    final linhas = t.querySelectorAll('tr').where((tr) => _tabelaDe(tr) == t).toList();
+    List<dom.Element> celulasDe(dom.Element tr) =>
+        tr.children.where((e) => e.localName == 'td' || e.localName == 'th').toList();
+    final h = linhas.indexWhere((tr) => celulasDe(tr).where((e) => _diaHorario(e.text) != null).length >= 3);
     if (h < 0) continue;
-    final cab = g[h].map(norm).toList();
+    final cab = celulasDe(linhas[h]);
     final colDia = <int, int>{};
     for (var i = 0; i < cab.length; i++) {
-      final d = _diasNorm.indexWhere(cab[i].startsWith);
-      if (d >= 0) colDia[i] = d + 1;
+      final d = _diaHorario(cab[i].text);
+      if (d != null) colDia[i] = d;
     }
-    final slots = <(int, String, String, String)>[]; // dia, inicio, fim, texto
-    for (final l in g.skip(h + 1)) {
-      final horas = l.map((c) => RegExp(r'(\d{1,2}[:h]\d{2})\s*(?:-|–|a|as|às|ate|até)?\s*(\d{1,2}[:h]\d{2})?').firstMatch(c)).toList();
-      final hi = horas.indexWhere((m) => m != null);
-      if (hi < 0 || colDia.containsKey(hi)) continue;
-      final ini = horas[hi]![1]!.replaceAll('h', ':');
-      final fim = (horas[hi]![2] ?? horas[hi]![1]!).replaceAll('h', ':');
+    final slots = <(int, String, String, String, String)>[]; // dia, inicio, fim, disciplina, detalhe
+    for (final tr in linhas.skip(h + 1)) {
+      final celulas = celulasDe(tr);
+      if (celulas.isEmpty) continue;
+      final hora = RegExp(r'(\d{1,2}[:h]\d{2})\s*(?:~|–|—|-|a|as|às|ate|até)?\s*(\d{1,2}[:h]\d{2})?')
+          .firstMatch(celulas.first.text);
+      if (hora == null) continue;
+      final ini = hora[1]!.replaceAll('h', ':');
+      final fim = (hora[2] ?? hora[1]!).replaceAll('h', ':');
       for (final e in colDia.entries) {
-        final texto = e.key < l.length ? l[e.key] : '';
+        if (e.key >= celulas.length) continue;
+        final cel = celulas[e.key];
+        final texto = limpar(cel.text);
         if (texto.isEmpty || texto == '-') continue;
-        slots.add((e.value, _hh(ini), _hh(fim), texto));
+        // IFES: <div title="Nome">SIGLA</div><div title="sala">BL09 903T</div><div>turma</div>
+        final partes = cel.querySelectorAll('div').where((d) => d.querySelector('div') == null).toList();
+        final sigla = partes.isEmpty ? texto : limpar(partes.first.text);
+        final titulo = partes.isEmpty ? '' : limpar(partes.first.attributes['title'] ?? '');
+        final nomeBase = titulo.isNotEmpty ? titulo : (legenda[sigla] ?? (partes.isEmpty ? texto : sigla));
+        final detalhe = partes.length > 1
+            ? partes.skip(1).map((d) => limpar(d.text)).where((s) => s.isNotEmpty).join(' · ')
+            : '';
+        final (nome, resto) = _disciplinaDaCelula(nomeBase, disciplinas);
+        slots.add((e.value, _hh(ini), _hh(fim), nome, detalhe.isNotEmpty ? detalhe : resto));
       }
     }
     if (slots.isEmpty) continue;
     slots.sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : Aula._min(a.$2).compareTo(Aula._min(b.$2)));
     final out = <Aula>[];
     for (final s in slots) {
-      final (nome, detalhe) = _disciplinaDaCelula(s.$4, disciplinas);
       final ult = out.isEmpty ? null : out.last;
-      if (ult != null && ult.dia == s.$1 && ult.disciplina == nome && Aula._min(s.$2) - ult.minutosFim <= 20) {
-        out[out.length - 1] = Aula(ult.dia, ult.inicio, s.$3, nome, ult.detalhe, ult.aulas + 1);
+      if (ult != null && ult.dia == s.$1 && norm(ult.disciplina) == norm(s.$4) && Aula._min(s.$2) - ult.minutosFim <= 20) {
+        out[out.length - 1] = Aula(ult.dia, ult.inicio, s.$3, ult.disciplina, ult.detalhe.isEmpty ? s.$5 : ult.detalhe, ult.aulas + 1);
       } else {
-        out.add(Aula(s.$1, s.$2, s.$3, nome, detalhe, 1));
+        out.add(Aula(s.$1, s.$2, s.$3, s.$4, s.$5, 1));
       }
     }
     return out;
@@ -470,8 +696,11 @@ String _hh(String h) {
   final n = norm(texto);
   for (final d in ds) {
     final nn = norm(d.nome);
-    if (nn.isNotEmpty && n.contains(nn)) {
-      return (d.nome, limpar(texto.replaceAll(RegExp(RegExp.escape(d.nome), caseSensitive: false), '').replaceAll(RegExp(r'^[\s\-–/|]+|[\s\-–/|]+$'), '')));
+    if (nn.isNotEmpty && (n == nn || n.contains(nn) || nn.contains(n))) {
+      final resto = limpar(texto
+          .replaceAll(RegExp(RegExp.escape(d.nome), caseSensitive: false), '')
+          .replaceAll(RegExp(r'^[\s\-–/|]+|[\s\-–/|]+$'), ''));
+      return (d.nome, resto);
     }
   }
   for (final d in ds) {

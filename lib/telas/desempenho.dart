@@ -209,7 +209,10 @@ class _DisciplinaCardState extends State<_DisciplinaCard> {
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(d.nome, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5, height: 1.2)),
+                    Text(d.nome,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5, height: 1.2)),
                     if (d.professor.isNotEmpty || d.situacao.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
@@ -318,13 +321,20 @@ class _NotaPill extends StatelessWidget {
   final Color cor;
   const _NotaPill(this.valor, {required this.rotulo, required this.cor});
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(color: cor.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(14)),
-        child: Column(children: [
-          Text(valor, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: cor)),
-          Text(rotulo, style: TextStyle(fontSize: 9.5, color: cor, fontWeight: FontWeight.w600)),
-        ]),
+  // largura limitada: um valor estranho nunca pode espremer o nome da disciplina
+  Widget build(BuildContext context) => ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 52, maxWidth: 92),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(color: cor.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(14)),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(valor,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: cor)),
+            Text(rotulo, maxLines: 1, style: TextStyle(fontSize: 9.5, color: cor, fontWeight: FontWeight.w600)),
+          ]),
+        ),
       );
 }
 
@@ -363,7 +373,10 @@ class _EtapaChip extends StatelessWidget {
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text('${e['rotulo']}  ', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        Flexible(
+          child: Text('${e['rotulo']}  ',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        ),
         Text(nota.isEmpty ? '–' : nota, style: TextStyle(fontWeight: FontWeight.w800, color: cor)),
         if (faltas != null && faltas > 0) Text('  · ${_num(faltas.toDouble())}F', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
       ]),

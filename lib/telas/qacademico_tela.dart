@@ -15,7 +15,38 @@ class ResultadoQA {
   final SituacaoQA situacao;
   final String mensagem;
   final int disciplinas;
-  const ResultadoQA(this.situacao, this.mensagem, {this.disciplinas = 0});
+  /// Boletim lido, mas diario e/ou horario nao: os dados estao incompletos.
+  final bool parcial;
+  const ResultadoQA(this.situacao, this.mensagem, {this.disciplinas = 0, this.parcial = false});
+}
+
+/// Mensagem final da importacao (dizendo o que nao foi lido, sem aparentar sucesso completo).
+ResultadoQA resultadoImportacao(int disciplinas, LeituraDiarios? diarios, int blocosHorario) {
+  final semDiario = diarios == null || diarios.disciplinas == 0;
+  final semHorario = blocosHorario == 0;
+  final partes = [
+    '$disciplinas disciplina(s)',
+    if (!semDiario) 'frequência de ${diarios.disciplinas}',
+    if (!semDiario && diarios.avaliacoes > 0) '${diarios.avaliacoes} avaliação(ões)',
+    if (!semHorario) '$blocosHorario aula(s) no horário',
+  ];
+  final faltou = [
+    if (semDiario) 'os diários (frequência e avaliações)',
+    if (semHorario) 'o horário',
+  ];
+  final msg = faltou.isEmpty
+      ? 'Q-Acadêmico atualizado: ${partes.join(', ')}.'
+      : 'Importação parcial: li ${partes.join(', ')}, mas não consegui ler ${faltou.join(' nem ')}.';
+  return ResultadoQA(SituacaoQA.ok, msg, disciplinas: disciplinas, parcial: faltou.isNotEmpty);
+}
+
+/// So guarda matricula/senha depois de uma importacao que deu certo. A senha so fica
+/// salva se a pessoa marcou "lembrar"; desmarcado, apaga a que estava salva.
+Future<void> guardarCredenciaisQA(ResultadoQA r,
+    {required String login, required String senha, required bool lembrar}) async {
+  if (r.situacao != SituacaoQA.ok) return;
+  if (login.isNotEmpty) await Cfg.setQaLogin(login);
+  await Cfg.setQaSenha(lembrar && senha.isNotEmpty ? senha : null);
 }
 
 /// Le o Q-Academico num WebView de verdade (o mesmo navegador do Android): o site roda
@@ -135,10 +166,8 @@ class ColetorQA {
         if (est == 'login') return const ResultadoQA(SituacaoQA.precisaLogin, 'Matrícula ou senha do Q-Acadêmico não aceitas.');
         await abrir('$_base${QAcademico.paginaBoletim}');
       }
-      // os links do menu dizem onde ficam boletim, diarios e horario nesta instituicao
+      // o boletim do t=2032 e o formato conhecido; o menu so ajuda a achar diarios e horario
       final links = await _linksDoMenu();
-      final urlBoletim = links['boletim'] ?? '$_base${QAcademico.paginaBoletim}';
-      if (links['boletim'] != null) await abrir(urlBoletim);
       final boletim = await html();
       await QAcademico.guardarPagina('boletim', boletim);
       final disc = lerBoletim(boletim);
@@ -146,14 +175,15 @@ class ColetorQA {
         return const ResultadoQA(SituacaoQA.falhou,
             'Entrei, mas não reconheci o boletim. Em Perfil, use "Exportar páginas do Q-Acadêmico" e me mande os arquivos.');
       }
+      LeituraDiarios? diarios;
       try {
         await abrir(links['diarios'] ?? '$_base${QAcademico.paginaDiarios}');
         if (await _estado() == 'pagina') {
           final h = await html();
           await QAcademico.guardarPagina('diarios', h);
-          lerDiarios(h, disc);
+          diarios = lerDiarios(h, disc);
         }
-      } catch (_) {} // diarios sao extra: o boletim ja vale
+      } catch (_) {}
       var horario = <Aula>[];
       try {
         await abrir(links['horario'] ?? '$_base${QAcademico.paginaHorario}');
@@ -164,9 +194,7 @@ class ColetorQA {
         }
       } catch (_) {}
       final n = await app.salvarAcademico(disc, horario: horario);
-      return ResultadoQA(SituacaoQA.ok,
-          'Q-Acadêmico atualizado: $n disciplina(s)${horario.isEmpty ? '' : ' e ${horario.length} aula(s) no horário'}.',
-          disciplinas: n);
+      return resultadoImportacao(n, diarios, horario.length);
     } catch (e) {
       return ResultadoQA(SituacaoQA.falhou, 'Falha ao ler o Q-Acadêmico: ${'$e'.replaceFirst('Exception: ', '')}');
     } finally {
@@ -179,11 +207,11 @@ class ColetorQA {
     try {
       await QAcademico.guardarPagina('menu', await html());
       final r = await _js('JSON.stringify(Array.from(document.querySelectorAll("a[href]")).map(function(a){'
-          'return [a.innerText || a.title || "", a.href];}))');
+          'var img = a.querySelector("img[title]");'
+          'return [a.innerText || a.title || (img ? img.title : "") || "", a.href];}))');
       final links = (jsonDecode(r) as List).map((e) => (norm('${e[0]}'), '${e[1]}')).where((e) => e.$2.startsWith('http'));
       String? achar(bool Function(String) f) => links.where((e) => f(e.$1)).map((e) => e.$2).firstOrNull;
       return {
-        'boletim': ?achar((t) => t.contains('boletim')),
         'diarios': ?achar((t) => t.contains('diario')),
         'horario': ?achar((t) => t.contains('horario') && !t.contains('prova')),
       };
@@ -211,7 +239,7 @@ class _ColetorOcultoState extends State<ColetorOculto> {
       final c = _c ??= ColetorQA();
       if (mounted) setState(() {});
       final r = await c.coletar();
-      return r.situacao == SituacaoQA.ok ? null : r.mensagem;
+      return r.situacao == SituacaoQA.ok && !r.parcial ? null : r.mensagem;
     };
   }
 
@@ -244,7 +272,7 @@ class _QAcademicoTelaState extends State<QAcademicoTela> {
   final _c = ColetorQA();
   final _login = TextEditingController(text: Cfg.qaLogin);
   final _senha = TextEditingController();
-  bool _lembrar = true;
+  bool _lembrar = false;
   bool _ocupado = false;
   String? _msg;
 
@@ -252,7 +280,12 @@ class _QAcademicoTelaState extends State<QAcademicoTela> {
   void initState() {
     super.initState();
     Cfg.qaSenha().then((s) {
-      if (s != null && mounted) setState(() => _senha.text = s);
+      if (s != null && mounted) {
+        setState(() {
+          _senha.text = s;
+          _lembrar = true;
+        });
+      }
     });
     _c.abrir(ColetorQA.urlLogin).catchError((_) {});
   }
@@ -264,9 +297,6 @@ class _QAcademicoTelaState extends State<QAcademicoTela> {
     });
     final login = _login.text.trim();
     final senha = _senha.text;
-    if (login.isNotEmpty) await Cfg.setQaLogin(login);
-    // a senha so fica salva se marcar "lembrar"; senao, so e usada agora
-    await Cfg.setQaSenha(_lembrar ? senha : null);
     ResultadoQA r;
     if (senha.isNotEmpty && login.isNotEmpty) {
       try {
@@ -277,6 +307,7 @@ class _QAcademicoTelaState extends State<QAcademicoTela> {
     } else {
       r = await _c.coletar(entrarSozinho: false); // ja entrou pela pagina
     }
+    await guardarCredenciaisQA(r, login: login, senha: senha, lembrar: _lembrar);
     if (!mounted) return;
     setState(() {
       _ocupado = false;
