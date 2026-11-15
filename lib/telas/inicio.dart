@@ -54,7 +54,7 @@ class _InicioTelaState extends State<InicioTela> {
               IconButton(
                 tooltip: 'Abrir espaço Social',
                 icon: const Icon(Icons.forum_outlined),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SocialTela())),
+                onPressed: () => Navigator.of(context).push(SocialTela.rota()),
               ),
               IconButton(
                 tooltip: 'Buscar',

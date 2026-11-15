@@ -11,6 +11,17 @@ Formato:
 **Consequências:** ... (opcional)
 ```
 
+## 2026-11-15 — Social v2: sessão, envelopes, long polling
+**Decisão:** o token do AVA vira uma sessão HMAC de 12 h; chaves das conversas também
+circulam por envelopes X25519 entre aparelhos; mensagens chegam por long polling.
+Removidos `server/` (Node local) e as camadas `SocialRepository`/`HttpSocialRepository`.
+**Por quê:** validar no AVA a cada 4 s era lento e pesado; convite como único jeito de
+receber a chave impedia DM, adicionar amigo e trocar de celular; Realtime do Supabase
+exigiria dar acesso direto às tabelas. O servidor Node não era usado em produção.
+**Consequências:** o servidor poderia trocar chaves públicas (sem verificação entre
+pessoas). Avatares e ícones não são cifrados. Substitui a parte "polling 4 s" e
+"chave só por convite" da decisão "Social no Supabase com identidade do AVA".
+
 ## 2026-11-14 — Main protegida, colaboradores com branches no repositório
 **Decisão:** amigos de confiança entram como colaboradores e criam branches aqui. A
 `main` tem o ruleset "proteger main": só por pull request com a checagem `conferir`

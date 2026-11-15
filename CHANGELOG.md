@@ -20,6 +20,32 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+### Adicionado
+- **Social novo, no estilo Discord**: barra lateral com seus grupos, mensagens
+  diretas, aba de amigos e aba "Você".
+- **Canais dentro dos grupos** (#geral, #avisos…), com tópico e canal de avisos em
+  que só administradores escrevem. O grupo da matéria já vem com #avisos, #geral e #dúvidas.
+- **Perfis**: foto, cor, "sobre mim", nome de exibição, @usuário e status
+  (disponível, ocupado, ausente, invisível) com status personalizado e emoji.
+- **Amigos**: pedidos de amizade, aceitar/recusar, bloquear, busca por nome ou @usuário.
+- **Mensagens diretas** entre amigos ou pessoas do mesmo grupo.
+- **Mensagens melhores**: foto e nome de quem mandou, mensagens agrupadas, separador
+  de dia e de "Novas mensagens", responder (também arrastando para o lado), reações
+  com emoji, editar, apagar, fixar, @menções, formatação (**negrito**, *itálico*,
+  `código`, ||spoiler||), links clicáveis e busca.
+- **Anexos**: fotos e arquivos (até 8 MB), cifrados como as mensagens.
+- **Quem está digitando**, quem está online e lista de membros do grupo.
+- **Administração**: tornar admin, transferir posse, remover, banir e desbanir,
+  convites com validade, revogar convites, editar nome, descrição e foto do grupo,
+  apelido por grupo, silenciar grupo, sair e apagar.
+- **Notificações** de mensagens novas, inclusive com o app fechado (a cada ~15 min).
+### Alterado
+- As mensagens aparecem na hora ao enviar e chegam em menos de um segundo, sem
+  esperar a atualização a cada 4 s.
+- Amigo adicionado direto no grupo, conversa direta e troca de celular recebem a
+  chave sozinhos quando outro membro abre o app, sem precisar de um convite novo.
+### Corrigido
+- Erro ao voltar para o app com um chat aberto depois de deixá-lo em segundo plano.
 
 ## [0.7.0] - 2026-11-14
 ### Adicionado

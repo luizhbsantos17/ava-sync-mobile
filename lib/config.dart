@@ -60,6 +60,18 @@ class Cfg {
   static bool get permissaoPedida => _p.getBool('perm_notif') ?? false;
   static Future<void> setPermissaoPedida(bool v) => _p.setBool('perm_notif', v);
 
+  // ---- social ----
+  static bool get socialNotificacoes => _p.getBool('social_notif') ?? true;
+  static Future<void> setSocialNotificacoes(bool v) => _p.setBool('social_notif', v);
+  static bool get socialUsado => _p.getBool('social_usado') ?? false;
+  static Future<void> setSocialUsado(bool v) => _p.setBool('social_usado', v);
+  static String get socialUltimaNotif => _p.getString('social_ultima_notif') ?? '';
+  static Future<void> setSocialUltimaNotif(String v) => _p.setString('social_ultima_notif', v);
+  static List<String> get socialEmojisRecentes => _p.getStringList('social_emojis') ?? const ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+  static Future<void> setSocialEmojisRecentes(List<String> v) => _p.setStringList('social_emojis', v.take(12).toList());
+  static String get socialRascunhos => _p.getString('social_rascunhos') ?? '{}';
+  static Future<void> setSocialRascunhos(String v) => _p.setString('social_rascunhos', v);
+
   // ---- atualizacoes do app ----
   static bool get verificarAtualizacoes => _p.getBool('upd_auto') ?? true;
   static Future<void> setVerificarAtualizacoes(bool v) => _p.setBool('upd_auto', v);

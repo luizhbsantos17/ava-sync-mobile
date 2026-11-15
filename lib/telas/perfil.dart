@@ -214,7 +214,7 @@ class _PerfilAbaState extends State<PerfilAba> {
         title: const Text('Grupos e conversas'),
         subtitle: const Text('Seu espaço social com amigos e colegas'),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SocialTela())),
+        onTap: () => Navigator.of(context).push(SocialTela.rota()),
       ),
       ListTile(
         leading: const Icon(Icons.school_outlined),

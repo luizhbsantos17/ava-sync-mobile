@@ -31,7 +31,7 @@ description: Regras de branch, commit, push e pull request do AVA Sync. Use ante
 - **Nunca** pule hooks ou checagens (`--no-verify`).
 - Antes de cada push: `flutter analyze` e `flutter test` limpos.
 - Antes de commitar, confira `git status` e `git diff --cached`: nada de `*.jks`,
-  `key.properties`, `social-*.json`, `server/data/`, `server/tls/`, `.env`, HTMLs reais
+  `key.properties`, `social-*.json`, `.env`, HTMLs reais
   do Q-Acadêmico, prints com dados pessoais.
 
 ## Commits

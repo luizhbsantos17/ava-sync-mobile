@@ -9,15 +9,14 @@ import 'estado_app.dart';
 import 'fundo.dart';
 import 'tema.dart';
 import 'util.dart';
-import 'social/backend.dart';
 import 'telas/atualizar.dart';
 import 'telas/inicio.dart';
 import 'telas/login.dart';
+import 'telas/social.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Cfg.init();
-  await SocialBackend.initialize();
   temaAtual.value = Tema.deTexto(Cfg.temaJson);
   try {
     await Notif.init();
@@ -27,12 +26,14 @@ Future<void> main() async {
   await app.carregar();
   Notif.aoTocar = (payload) {
     if (payload == payloadAtualizar) unawaited(procurarAtualizacao(forcar: true));
+    if (payload != null && payload.startsWith('social:')) unawaited(_abrirSocial(payload));
   };
   String? abriuPor;
   try {
     abriuPor = await Notif.payloadDeAbertura();
   } catch (_) {}
   unawaited(procurarAtualizacao(forcar: abriuPor == payloadAtualizar));
+  if (abriuPor != null && abriuPor.startsWith('social:')) unawaited(_abrirSocial(abriuPor));
   if (app.logado) {
     await agendar();
     if (!Cfg.permissaoPedida) {
@@ -46,6 +47,15 @@ Future<void> main() async {
 }
 
 final navegador = GlobalKey<NavigatorState>();
+
+/// Toque numa notificação do Social: abre a conversa.
+Future<void> _abrirSocial(String payload) async {
+  for (var i = 0; i < 20 && (navegador.currentState == null || app.carregando); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+  }
+  if (!app.logado) return;
+  await navegador.currentState?.push(SocialTela.rota(abrir: payload));
+}
 
 /// Procura versao nova e, se houver, pergunta se quer atualizar.
 /// [forcar]: pergunta mesmo que a pessoa tenha tocado em "Depois" antes.

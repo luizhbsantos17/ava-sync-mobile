@@ -40,12 +40,12 @@ GitHub Releases <-- lib/atualizacao.dart        Supabase Edge Function "social" 
   `latest` (ou `beta`, no canal beta) pela API do GitHub. O corpo começa com
   `Build: N` e `Versão: X.Y.Z`, seguido das notas do CHANGELOG. Baixa o APK com
   progresso e abre o instalador.
-- **Social** (`lib/social/`, `supabase/`): veja `docs/SOCIAL_BACKEND.md`. O app manda o
-  token do AVA para a Edge Function `social`, que valida com
-  `core_webservice_get_site_info` em toda chamada. Tabelas com RLS, sem acesso direto
-  de clientes. Mensagens cifradas com AES-GCM no aparelho; a chave do grupo vai no
-  convite (`AVASYNC1.…`). Professor confirmado por `core_enrol_get_enrolled_users`.
-  Mensagens chegam por polling a cada 4 s (ainda sem push).
+- **Social** (`lib/social/`, `lib/telas/social/`, `supabase/`): veja
+  `docs/SOCIAL_BACKEND.md`. O token do AVA é trocado por uma sessão HMAC de 12 h na
+  Edge Function `social`, que confere toda permissão. Tabelas com RLS e sem acesso
+  direto de clientes. Mensagens e anexos cifrados com AES-GCM no aparelho; a chave da
+  conversa vem do convite ou de um envelope X25519 de outro membro. Tempo real por
+  long polling (`poll`, até 20 s). Professor confirmado por `core_enrol_get_enrolled_users`.
 
 ## Build e distribuição
 - Flavors Android: `production` (`io.github.avasync.mobile`, "AVA Sync") e `beta`

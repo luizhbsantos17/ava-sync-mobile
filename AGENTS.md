@@ -63,7 +63,7 @@ estudantes. Idioma do app, dos commits e da documentação: **português do Bras
 
 1. **Nada de segredo ou dado pessoal no Git**: senhas, tokens do Moodle, keystore
    (`*.jks`), `android/key.properties`, chave `service_role`/secret do Supabase,
-   `social-*.json`, `server/data/`, `server/tls/`, HTMLs reais do Q-Acadêmico, notas,
+   `social-*.json`, HTMLs reais do Q-Acadêmico, notas,
    nomes, matrículas. Fixtures de teste usam dados fictícios ("Aluno Exemplo da Silva",
    matrícula `20990XXX0001`, COD_PAUTA `9001xx`, "Professor Exemplo ...").
 2. **Assinatura do APK**: não altere `applicationId` (`io.github.avasync.mobile`), os
@@ -101,10 +101,10 @@ estudantes. Idioma do app, dos commits e da documentação: **português do Bras
 | `lib/fundo.dart` | notificações e tarefas em segundo plano (workmanager) |
 | `lib/atualizacao.dart`, `lib/telas/atualizar.dart` | atualização dentro do app via GitHub Releases |
 | `lib/calendario.dart`, `lib/compromissos.dart` | agenda do celular e lembretes |
-| `lib/social/` | Social: `repository.dart` (contrato), `moodle_social_repository.dart` (Supabase), `supabase_crypto.dart` (AES-GCM, convites) |
+| `lib/social/` | Social: `api.dart` (sessão e HTTP), `service.dart` (estado), `feed.dart` (mensagens de um canal), `supabase_crypto.dart` (AES-GCM, X25519, convites), `formatacao.dart` |
+| `lib/telas/social/` | telas do Social: `home`, `chat`, `grupo`, `amigos`, `perfil`, `widgets`, `emojis` |
 | `lib/telas/` | telas (inicio, curso, desempenho, perfil, ajustes, social...) |
 | `supabase/` | migrations SQL e Edge Function `social` |
-| `server/` | servidor Node antigo para testes locais do Social (não é usado em produção) |
 | `test/` | testes; `test/fixtures/` só com HTML sanitizado |
 | `docs/SOCIAL_BACKEND.md` | desenho e privacidade do Social |
 | `scripts/notas_versao.sh` | extrai as notas de uma versão do CHANGELOG |

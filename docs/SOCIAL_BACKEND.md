@@ -1,65 +1,92 @@
 # Área Social do AVA Sync
 
-O Social usa a conta AVA que já está conectada no app. Não há cadastro ou senha
-separada. O app envia o token Moodle somente em uma chamada HTTPS à Edge Function,
-que valida a conta com `core_webservice_get_site_info` antes de atender cada ação.
-O token não é guardado no Supabase. A função aceita os domínios oficiais do AVA
-Ifes configurados no código.
+Grupos com canais, mensagens diretas, amigos, perfis e presença, no estilo Discord.
+Login é a conta do AVA que já está no app: não há cadastro nem senha separada.
 
-## Supabase
+## Peças
 
-O projeto fica no Supabase na região de São Paulo. A Edge Function `social` é o
-único caminho de acesso às tabelas; as tabelas têm RLS ligado e não dão acesso
-direto às chaves `anon` ou `authenticated`. A função usa a chave administrativa
-apenas no servidor. Essa chave não deve entrar no app nem no repositório.
+| Onde | O quê |
+|---|---|
+| `supabase/functions/social/index.ts` | Edge Function `social`: única porta de entrada; confere toda permissão |
+| `supabase/migrations/` | tabelas, RPCs (`social_overview`, `social_key_requests`), gatilhos e bucket `social` |
+| `lib/social/api.dart` | chamadas HTTP e sessão (troca o token do AVA por uma sessão de 12 h) |
+| `lib/social/service.dart` | `SocialService`: conversas, perfis em cache, chaves, mídia, notificações com o app aberto |
+| `lib/social/feed.dart` | `ChannelFeed`: mensagens de um canal, "long polling", envio otimista, reações, edição |
+| `lib/social/supabase_crypto.dart` | AES-GCM das mensagens e arquivos, chave X25519 do aparelho, envelopes, convites |
+| `lib/social/formatacao.dart` | **negrito**, *itálico*, `código`, blocos, spoiler, citação, links e @menções |
+| `lib/social/notificacoes.dart` | verificação em segundo plano (workmanager, ~15 min) |
+| `lib/telas/social/` | telas: `home` (barra de grupos), `chat`, `grupo` (configurações), `amigos`, `perfil`, `widgets`, `emojis` |
 
-As migrations estão em `supabase/migrations/`. O fonte que foi enviado ao projeto
-está em `supabase/functions/social/index.ts`.
+## Identidade e sessão
 
-Para executar localmente com a configuração já preparada:
+1. Ação `session`: o app manda o token do AVA; a função valida com
+   `core_webservice_get_site_info` e devolve uma sessão assinada com HMAC (12 h).
+   A chave do HMAC é derivada da chave de serviço do projeto; não há segredo extra.
+2. As demais ações usam só a sessão (sem consultar o AVA a cada chamada).
+3. Ações de professor (`teacher_courses`, `create_course_group`) sempre revalidam no AVA.
+4. Usuário = `host:idDoMoodle`. O nome vem do AVA até a pessoa trocar o nome de exibição.
 
-```powershell
-flutter pub get
-flutter run --dart-define-from-file=social-supabase-config.json
-```
+O token do AVA não é guardado no Supabase. A sessão fica no armazenamento seguro do celular.
 
-`social-supabase-config.json` está ignorado pelo Git. O URL e a chave publishable
-não são segredos; a chave `service_role`/secret nunca pode ser copiada para ele.
+## Privacidade e chaves
 
-## Identidade e privacidade
+- O servidor só guarda texto cifrado (AES-GCM 256 feito no aparelho). Formato 2 da
+  mensagem: JSON `{t: texto, a: [anexos]}`, com conversa, canal e autor no AAD.
+  Mensagens antigas (formato 1, só texto) continuam abrindo.
+- Anexos são cifrados com a mesma chave da conversa antes do envio e ficam no bucket
+  privado `social`; o download é por URL assinada (1 h) emitida só para membros.
+  Fotos de perfil e ícones de grupo **não** são cifrados (qualquer usuário do Social
+  com sessão pode pedir a URL de um avatar).
+- Cada aparelho tem um par X25519 (semente no armazenamento seguro); a pública vai no
+  perfil. A chave de cada conversa chega por:
+  - **convite** `AVASYNC1.…` (traz a chave), ou
+  - **envelope**: qualquer membro que tem a chave a embrulha (X25519 + HKDF + AES-GCM)
+    para a chave pública de quem ainda não tem. `social_key_requests` lista quem falta;
+    o app faz isso sozinho ao atualizar a visão geral. Assim funcionam: amigo
+    adicionado direto no grupo, mensagens diretas, turma no grupo da matéria e troca
+    de celular (o histórico volta quando outro membro abrir o app).
+- Limite conhecido: o servidor poderia trocar a chave pública de alguém (não há
+  verificação de chave entre pessoas). Aceito para o tamanho do projeto.
+- Busca de mensagens é feita no aparelho (o servidor não consegue ler).
+- Menções (`mentions`) ficam em texto claro, só com o ID de quem foi mencionado,
+  para contar menções e notificar.
+- Professor não ganha acesso a grupos de alunos: só entra em conversa em que é membro.
+  No grupo da matéria, o professor é dono e outros professores da disciplina viram admin.
 
-- O servidor valida a identidade Moodle em cada chamada e associa as contas por
-  host e ID de usuário do AVA. Não cria uma conta de login independente no app.
-- Só a Edge Function lê e escreve os registros. Ela confere participação antes de
-  listar ou enviar mensagens; professor não recebe acesso aos grupos privados de
-  amigos só por ser professor.
-- O app cifra mensagens com AES-GCM antes de enviá-las. O Supabase guarda texto
-  cifrado, nonce, tag, IDs e horários. O token AVA não é persistido pelo backend.
-- Convite contém a chave de leitura do grupo. Qualquer pessoa que receba o convite
-  pode tentar entrar; em grupos de matéria a função só aceita quem já foi incluído
-  no diário de participantes da disciplina pelo AVA.
-- A consulta ao AVA para verificar professores usa os papéis devolvidos por
-  `core_enrol_get_enrolled_users`. Se o serviço Moodle não permitir consultar os
-  participantes ou não devolver um papel reconhecido, o app não libera a criação.
-- No grupo de matéria, o AVA confirma o professor e a função inclui os inscritos
-  atuais como membros. O convite precisa ser compartilhado com a turma para que
-  cada aparelho receba a chave E2E; sem essa etapa o conteúdo continua cifrado.
-- As mensagens atualizam por polling a cada quatro segundos. Recuperar o histórico
-  em um celular novo exige receber novamente o convite/chave do grupo.
+## Permissões (conferidas na função)
 
-## Backends alternativos
+| Quem | Pode |
+|---|---|
+| membro | ler e escrever (exceto canal de avisos), reagir, responder, editar/apagar as próprias mensagens, criar convite, adicionar **amigos** ao grupo, apelido, silenciar, sair |
+| admin | + editar grupo (nome, descrição, ícone), canais (criar, editar, ordenar, apagar), fixar, apagar mensagens de quem tem cargo menor, remover e banir membros, revogar convites, adicionar qualquer pessoa |
+| dono | + promover/rebaixar admin, transferir posse, apagar o grupo |
+| mensagem direta | só entre amigos ou pessoas que dividem um grupo; bloqueio impede |
 
-A interface Flutter depende de `SocialRepository`, não de chamadas diretas às
-telas. O adaptador atual usa Supabase Edge Functions. `HttpSocialRepository` é a
-implementação local antiga para o servidor Node em `server/`; ela ainda usa sua
-autenticação própria e não implementa a identidade Moodle nem grupos de matéria.
-Para trocar o backend, será necessário implementar no servidor alternativo as
-mesmas validações de token e permissões antes de apontar o app para ele.
+Quando o dono sai, a posse vai para um admin ou para o membro mais antigo.
 
-## Backend local no PC
+## Tempo real
 
-Para executar o servidor Node local, rode `node server/index.js`. Ele escuta em
-`127.0.0.1:8787` e persiste dados em `server/data/` (ignorada pelo Git). Para
-testar com outro dispositivo na rede, gere TLS com `server/enable-local-tls.ps1`
-e autorize a porta privada pelo script `server/open-lan-firewall.ps1`. Este modo
-é destinado a desenvolvimento; não exponha a porta publicamente.
+Sem WebSocket: o app usa *long polling*. A ação `poll` segura a chamada por até
+20 s e responde assim que muda algo no canal (mensagem nova, edição, reação,
+alguém digitando). Cada mudança aumenta a coluna `rev` (sequência), e o app pede
+"tudo depois do `rev` que já tenho". Em segundo plano o laço para; ao voltar,
+continua de onde parou. Falha de rede mostra "Reconectando…" e tenta de novo.
+
+Com o app aberto, a visão geral (conversas, não lidas, menções) atualiza a cada 15 s
+e gera notificação local de mensagens em outros canais. Com o app fechado, uma tarefa
+do workmanager confere a cada ~15 min (`notifications`). Não há push (FCM).
+
+## Compatibilidade
+
+O app 0.7.0 (build 11) continua funcionando: as ações `me`, `list`, `messages`
+(por conversa), `send_message` (sem canal) e `join_group` aceitam o formato antigo.
+Mensagem sem canal cai no primeiro canal da conversa (gatilho `social_message_defaults`).
+
+## Publicar mudanças no servidor
+
+1. Migration nova em `supabase/migrations/` (nunca edite uma já aplicada).
+2. Edite `supabase/functions/social/index.ts`.
+3. Aplicar e publicar no projeto `zfyxjqdiffuuofwrgvat` é tarefa do dono (ou de um
+   agente que ele autorizou): `supabase db push` e `supabase functions deploy social --no-verify-jwt`.
+4. Sem token, a função responde "Endereço do AVA ausente."; sessão inválida responde
+   401 "Sessão do Social expirada.".

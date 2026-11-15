@@ -1,6 +1,6 @@
 ---
 name: social-backend
-description: Como mudar o Social (grupos e chat) do AVA Sync, no app e no Supabase (Edge Function e migrations), mantendo segurança e privacidade. Use para mudanças em lib/social/, lib/telas/social*.dart ou supabase/.
+description: Como mudar o Social (grupos, canais, DMs, amigos) do AVA Sync, no app e no Supabase (Edge Function e migrations), mantendo segurança e privacidade. Use para mudanças em lib/social/, lib/telas/social/ ou supabase/.
 ---
 
 # Social: app + Supabase
@@ -10,19 +10,21 @@ Leia antes: `docs/SOCIAL_BACKEND.md` e a parte Social de `docs/contexto/ARQUITET
 ## Regras de segurança
 - O app **nunca** recebe a chave `service_role`/secret. Só URL e chave publishable.
 - Toda permissão é conferida **na Edge Function** (`supabase/functions/social/index.ts`):
-  token do AVA validado a cada chamada; participação conferida com `requireMember`;
-  professor confirmado pelo papel na matéria (`hasTeacherRole`).
+  sessão HMAC (ou token do AVA nas ações de professor); participação com
+  `requireMember`, cargo com `requireRole`; professor pelo papel na matéria (`hasTeacherRole`).
 - Nada de policy que dê acesso direto às tabelas para `anon`/`authenticated`.
-- Mensagens continuam cifradas no aparelho (`lib/social/supabase_crypto.dart`); o
-  servidor não pode passar a receber texto claro. Mudou o formato? Crie `v: 2` e
-  continue lendo `v: 1`.
+- Mensagens e anexos continuam cifrados no aparelho (`lib/social/supabase_crypto.dart`);
+  o servidor não pode passar a receber texto claro. Mudou o formato? Crie `format: 3`
+  e continue lendo 1 e 2.
 - O token do AVA não é gravado no banco nem em log.
 - Professores não ganham acesso a grupos privados de alunos.
 
 ## Mudando o app
-- A UI fala com `SocialRepository` (`lib/social/repository.dart`); acrescente métodos
-  no contrato e implemente em `MoodleSocialRepository`.
-- Nova ação → mesmo nome em `_call('acao', {...})` e no `if (action === "acao")` da função.
+- Estado geral em `SocialService` (`lib/social/service.dart`); mensagens de um canal em
+  `ChannelFeed` (`lib/social/feed.dart`). Telas em `lib/telas/social/`.
+- Nova ação → `api.call('acao', {...})` no app e uma entrada `async acao(ctx)` no
+  objeto `actions` da função.
+- Não recrie streams/futuros dentro de `build` (foi a causa do erro ao voltar do segundo plano).
 
 ## Mudando o servidor
 1. Banco: crie uma migration nova em `supabase/migrations/AAAAMMDDHHMM_descricao.sql`.
@@ -35,6 +37,7 @@ Leia antes: `docs/SOCIAL_BACKEND.md` e a parte Social de `docs/contexto/ARQUITET
    nem todos atualizam na hora: ações novas são opcionais, campos novos têm padrão.
 
 ## Testar
-- Testes de unidade para convite/cripto em `test/social_test.dart`.
+- Testes de unidade em `test/social_test.dart` e `test/social_v2_test.dart`
+  (convite, cripto v1/v2, arquivos, envelopes, formatação, modelos).
 - Para testar a função sem dado real: chamada sem token deve responder erro
   ("Endereço do AVA ausente." / token inválido).

@@ -9,6 +9,7 @@ import 'atualizacao.dart';
 import 'calendario.dart';
 import 'compromissos.dart';
 import 'config.dart';
+import 'social/notificacoes.dart';
 import 'sync.dart';
 import 'util.dart';
 
@@ -64,6 +65,26 @@ class Notif {
     await p.show(id: id, title: titulo, body: corpo, notificationDetails: _detalhes(corpo), payload: payload);
   }
 
+  /// Mensagem do Social (canal próprio, agrupado por conversa).
+  static Future<void> mostrarSocial(int id, String titulo, String corpo, {String? payload}) async {
+    await init();
+    await p.show(
+      id: 5000 + (id.abs() % 4000),
+      title: titulo,
+      body: corpo,
+      payload: payload,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails('social', 'Social',
+            channelDescription: 'Mensagens dos grupos e conversas',
+            importance: Importance.high,
+            priority: Priority.high,
+            groupKey: 'social',
+            category: AndroidNotificationCategory.message,
+            styleInformation: BigTextStyleInformation(corpo)),
+      ),
+    );
+  }
+
   static const _idLembrete = 1000;
   static const _maxLembretes = 400;
 
@@ -117,6 +138,7 @@ Future<void> avisarAtualizacao() async {
 }
 
 const tarefaSync = 'ava-sync';
+const tarefaSocial = 'ava-sync-social';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -125,6 +147,10 @@ void callbackDispatcher() {
     DartPluginRegistrant.ensureInitialized();
     try {
       await Cfg.init();
+      if (task == tarefaSocial) {
+        await verificarSocial();
+        return true;
+      }
       if (!Cfg.autoSync || (await Cfg.token()) == null) {
         await avisarAtualizacao();
         return true;
@@ -141,6 +167,17 @@ void callbackDispatcher() {
 
 Future<void> agendar() async {
   final wm = Workmanager();
+  if (Cfg.socialUsado && Cfg.socialNotificacoes) {
+    await wm.registerPeriodicTask(
+      tarefaSocial,
+      tarefaSocial,
+      frequency: const Duration(minutes: 15),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+      constraints: Constraints(networkType: NetworkType.connected),
+    );
+  } else {
+    await wm.cancelByUniqueName(tarefaSocial);
+  }
   // a mesma tarefa periodica sincroniza (se ligado) e procura atualizacao do app
   if (!Cfg.autoSync && !Cfg.verificarAtualizacoes) {
     await wm.cancelByUniqueName(tarefaSync);
