@@ -40,14 +40,56 @@ class SupabaseSocialCrypto {
   // ------------------------------------------------------------ chaves das conversas
   static Future<List<int>> newGroupKey() async => _randomBytes(32);
 
-  static Future<void> saveGroupKey(String conversationId, List<int> key) async {
-    _cache[conversationId] = key;
-    await _storage.write(key: _keyName(conversationId), value: b64(key));
+  static String _oldKeysName(String conversationId) => 'social_group_keys_old_$conversationId';
+  static final Map<String, List<List<int>>> _oldCache = {};
+
+  static bool _same(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Chaves que este aparelho já teve para a conversa (a atual primeiro). Nenhuma é
+  /// jogada fora: mensagens antigas podem ter sido cifradas com qualquer uma delas.
+  static Future<List<List<int>>> groupKeys(String conversationId) async {
+    final current = await groupKey(conversationId);
+    if (!_oldCache.containsKey(conversationId)) {
+      final raw = await _storage.read(key: _oldKeysName(conversationId));
+      _oldCache[conversationId] = [
+        for (final k in (raw ?? '').split(',')) if (k.isNotEmpty) unb64(k),
+      ];
+    }
+    return [?current, ..._oldCache[conversationId]!];
+  }
+
+  static Future<void> _saveOld(String conversationId, List<List<int>> old) async {
+    _oldCache[conversationId] = old;
+    await _storage.write(key: _oldKeysName(conversationId), value: old.map(b64).join(','));
+  }
+
+  /// Guarda a chave. Com [atual] (convite ou conversa nova) ela passa a ser usada para
+  /// cifrar e a anterior continua guardada para ler; sem [atual] (envelope) ela só é
+  /// acrescentada se o aparelho já tiver outra.
+  static Future<void> saveGroupKey(String conversationId, List<int> key, {bool atual = true}) async {
+    final keys = await groupKeys(conversationId);
+    final current = keys.isEmpty ? null : keys.first;
+    if (current != null && _same(current, key)) return;
+    if (current == null || atual) {
+      _cache[conversationId] = key;
+      await _storage.write(key: _keyName(conversationId), value: b64(key));
+      await _saveOld(conversationId, [for (final k in keys) if (!_same(k, key)) k]);
+    } else if (!keys.any((k) => _same(k, key))) {
+      await _saveOld(conversationId, [...keys.skip(1), key]);
+    }
   }
 
   static Future<void> removeGroupKey(String conversationId) async {
     _cache.remove(conversationId);
+    _oldCache.remove(conversationId);
     await _storage.delete(key: _keyName(conversationId));
+    await _storage.delete(key: _oldKeysName(conversationId));
   }
 
   static Future<List<int>?> groupKey(String conversationId) async {
@@ -61,7 +103,10 @@ class SupabaseSocialCrypto {
   static Future<bool> hasKey(String conversationId) async => (await groupKey(conversationId)) != null;
 
   /// Só para testes.
-  static void setKeyForTest(String conversationId, List<int>? key) => _cache[conversationId] = key;
+  static void setKeyForTest(String conversationId, List<int>? key) {
+    _cache[conversationId] = key;
+    _oldCache[conversationId] = [];
+  }
 
   /// Só para testes: esquece a chave do aparelho carregada.
   static void resetDeviceForTest() {
@@ -92,12 +137,22 @@ class SupabaseSocialCrypto {
   /// Abre uma linha de `social_messages` (formatos 1 e 2).
   static Future<ConteudoMensagem> decryptRow(Map<String, dynamic> row) async {
     final conversationId = '${row['conversation_id']}';
-    final key = await groupKey(conversationId);
-    if (key == null) throw StateError('Sem a chave desta conversa.');
+    final keys = await groupKeys(conversationId);
+    if (keys.isEmpty) throw StateError('Sem a chave desta conversa.');
     final format = row['format'] is num ? (row['format'] as num).toInt() : 1;
     final box = SecretBox(unb64('${row['ciphertext']}'), nonce: unb64('${row['nonce']}'), mac: Mac(unb64('${row['mac']}')));
-    final clear = utf8.decode(await _aes.decrypt(box,
-        secretKey: SecretKey(key), aad: _aad(format, conversationId, '${row['channel_id']}', '${row['sender_id']}')));
+    final aad = _aad(format, conversationId, '${row['channel_id']}', '${row['sender_id']}');
+    List<int>? bytes;
+    for (final key in keys) {
+      try {
+        bytes = await _aes.decrypt(box, secretKey: SecretKey(key), aad: aad);
+        break;
+      } on SecretBoxAuthenticationError {
+        continue;
+      }
+    }
+    if (bytes == null) throw StateError('Nenhuma chave deste aparelho abre esta mensagem.');
+    final clear = utf8.decode(bytes);
     if (format != 2) return ConteudoMensagem(clear);
     final j = jsonDecode(clear);
     if (j is! Map) return const ConteudoMensagem('');
@@ -125,11 +180,18 @@ class SupabaseSocialCrypto {
   }
 
   static Future<Uint8List> decryptFile(String conversationId, String path, List<int> data) async {
-    final key = await groupKey(conversationId);
-    if (key == null) throw StateError('Sem a chave desta conversa.');
+    final keys = await groupKeys(conversationId);
+    if (keys.isEmpty) throw StateError('Sem a chave desta conversa.');
     if (data.length < 28) throw const FormatException('Arquivo corrompido.');
     final box = SecretBox(data.sublist(12, data.length - 16), nonce: data.sublist(0, 12), mac: Mac(data.sublist(data.length - 16)));
-    return Uint8List.fromList(await _aes.decrypt(box, secretKey: SecretKey(key), aad: utf8.encode('ava-sync-file-v1|$path')));
+    for (final key in keys) {
+      try {
+        return Uint8List.fromList(await _aes.decrypt(box, secretKey: SecretKey(key), aad: utf8.encode('ava-sync-file-v1|$path')));
+      } on SecretBoxAuthenticationError {
+        continue;
+      }
+    }
+    throw StateError('Nenhuma chave deste aparelho abre este arquivo.');
   }
 
   // ------------------------------------------------------------ chave do aparelho
@@ -184,7 +246,6 @@ class SupabaseSocialCrypto {
   static Future<bool> openEnvelope(Map<String, dynamic> e) async {
     try {
       final conversationId = '${e['conversation_id']}';
-      if (await hasKey(conversationId)) return true;
       final mine = await devicePublicKey();
       final sender = '${e['sender_public']}';
       final wrap = await _wrapKey(conversationId, sender, sender, mine);
@@ -193,7 +254,7 @@ class SupabaseSocialCrypto {
         secretKey: wrap,
       );
       if (key.length != 32) return false;
-      await saveGroupKey(conversationId, key);
+      await saveGroupKey(conversationId, key, atual: false);
       return true;
     } catch (_) {
       return false;

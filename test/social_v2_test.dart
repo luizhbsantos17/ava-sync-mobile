@@ -148,6 +148,24 @@ void main() {
       expect(await SupabaseSocialCrypto.groupKey('g'), chave);
     });
 
+    test('chave nova não apaga a antiga: mensagens das duas continuam abrindo', () async {
+      final k1 = List<int>.filled(32, 1), k2 = List<int>.filled(32, 2);
+      await SupabaseSocialCrypto.removeGroupKey('m');
+      await SupabaseSocialCrypto.saveGroupKey('m', k1);
+      final antiga = await SupabaseSocialCrypto.encrypt('m', 'eu', 'com a chave 1');
+      await SupabaseSocialCrypto.saveGroupKey('m', k2); // entrou de novo por outro convite
+      final nova = await SupabaseSocialCrypto.encrypt('m', 'eu', 'com a chave 2');
+      expect(await SupabaseSocialCrypto.groupKey('m'), k2);
+      for (final (box, texto) in [(antiga, 'com a chave 1'), (nova, 'com a chave 2')]) {
+        final c = await SupabaseSocialCrypto.decryptRow({...box, 'conversation_id': 'm', 'channel_id': 'x', 'sender_id': 'eu'});
+        expect(c.texto, texto);
+      }
+      // envelope com outra chave só acrescenta, não troca a atual
+      await SupabaseSocialCrypto.saveGroupKey('m', List<int>.filled(32, 3), atual: false);
+      expect(await SupabaseSocialCrypto.groupKey('m'), k2);
+      expect((await SupabaseSocialCrypto.groupKeys('m')).length, 3);
+    });
+
     test('convite colado com texto em volta', () {
       final k = SupabaseSocialCrypto.b64(chave);
       final code = SupabaseSocialCrypto.makeInvite(conversationId: 'g1', token: 's', conversationKey: k);

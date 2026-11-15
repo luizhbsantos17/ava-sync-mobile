@@ -46,6 +46,8 @@ essa seção quando a versão atual ainda não tem uma.
   chave sozinhos quando outro membro abre o app, sem precisar de um convite novo.
 ### Corrigido
 - Erro ao voltar para o app com um chat aberto depois de deixá-lo em segundo plano.
+- Mensagens de grupo que viravam "protegidas": o aparelho guarda todas as chaves que
+  já teve para cada grupo e não apaga mais a chave quando um convite dá erro.
 
 ## [0.7.0] - 2026-11-14
 ### Adicionado

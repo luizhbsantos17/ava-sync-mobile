@@ -31,6 +31,9 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
 - Fotos são reduzidas e salvas em PNG (o Flutter não codifica JPEG sem pacote extra),
   então fotos grandes podem ficar perto do limite de 8 MB.
 - Busca só procura nas mensagens já carregadas no aparelho.
+- No app 0.7.0, mensagens de grupo apareceram como protegidas para o dono (dados
+  intactos no servidor). A v2 guarda várias chaves por conversa e recebe as que faltam
+  por envelope; conferir no celular se as mensagens do outro membro voltam.
 - Duas branches `feature/**` publicando ao mesmo tempo sobrescrevem a mesma release beta.
 
 ## Ideias / próximos passos (não decididos)
