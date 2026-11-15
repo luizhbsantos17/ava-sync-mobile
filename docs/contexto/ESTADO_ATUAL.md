@@ -37,6 +37,9 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
 - Duas branches `feature/**` publicando ao mesmo tempo sobrescrevem a mesma release beta.
 
 ## Ideias / próximos passos (não decididos)
+- **Decidido pelo dono, fazer depois do teste da beta:** guardar a chave de cada conversa
+  no servidor (cifrada com segredo da Edge Function), estilo Discord, no lugar de só no
+  aparelho. Aparelhos que já têm chave enviam ao servidor na migração.
 - Notificação push do Social (Firebase Cloud Messaging).
 - Categorias de canais, cargos personalizados com cores, chamadas de voz.
 - Verificação de chave entre pessoas (código de segurança) nas mensagens diretas.
