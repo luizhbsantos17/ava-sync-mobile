@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-15 (Social v2 na branch `feature/social-discord`; oficial ainda 0.7.0, build 11)
+Última atualização: 2026-11-15 (versão 0.8.0, Social v2 lançado na oficial)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.

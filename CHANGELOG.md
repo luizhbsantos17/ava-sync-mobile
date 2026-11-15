@@ -20,6 +20,8 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+
+## [0.8.0] - 2026-11-15
 ### Adicionado
 - **Social novo, no estilo Discord**: barra lateral com seus grupos, mensagens
   diretas, aba de amigos e aba "Você".
