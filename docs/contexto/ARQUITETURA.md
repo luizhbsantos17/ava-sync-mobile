@@ -32,7 +32,9 @@ GitHub Releases <-- lib/atualizacao.dart        Supabase Edge Function "social" 
   `ColetorQA` abre o site num WebView oculto com o login da pessoa e lê as páginas
   t=2032 (boletim), t=2071 (diários) e t=2010 (horário). Os leitores (`lerBoletim`,
   `lerDiarios`, `lerHorario`) só olham tabelas "folha" (sem tabela dentro). Faltas:
-  limite = aulas previstas x (100 - mínimo%) / 100; os dias que ainda pode faltar
+  carga em horas convertida para aulas de 50 minutos quando não há total de aulas
+  distinto da carga; limite = total de aulas x (100 - mínimo%) / 100 (arredondado
+  para baixo); os dias que ainda pode faltar
   dividem pelas aulas daquele dia no horário (padrão 2).
 - **IA de estudo** (`lib/ia.dart`, `lib/telas/ia_tela.dart`): monta guias por matéria
   para provedores de IA configurados pela pessoa.

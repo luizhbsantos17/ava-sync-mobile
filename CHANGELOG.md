@@ -20,6 +20,8 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+### Corrigido
+- **Faltas no Acadêmico**: limites corrigidos de 7, 15 e 22 para 9, 18 e 27 nas disciplinas de 30, 60 e 90 horas, com ajuste das faltas e dias restantes.
 
 ## [0.8.0] - 2026-11-15
 ### Adicionado

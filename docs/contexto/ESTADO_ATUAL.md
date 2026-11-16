@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-15 (versão 0.8.0, Social v2 lançado na oficial)
+Última atualização: 2026-11-16 (versão 0.8.0; correção de faltas ainda não lançada)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -12,6 +12,7 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
 - Atualização dentro do app, com "O que mudou" vindo do CHANGELOG.
 - Perfil com foto e aparência personalizável (temas e JSON).
 - Aba Acadêmico: disciplinas, boletim, horário, faltas restantes e simulador.
+- Limites de faltas para 30/60/90 horas corrigidos para 9/18/27 (aulas de 50 minutos).
 - Social v2 (estilo Discord): grupos com canais, mensagens diretas, amigos, perfis,
   presença e status, reações, respostas, edição, fixados, anexos cifrados, digitando,
   moderação (admin, dono, remover, banir), convites com validade, notificações.
@@ -23,6 +24,7 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
 - (nada)
 
 ## Problemas conhecidos / não verificado
+- Correção dos limites de faltas não testada em celular com importação real.
 - Social v2 ainda não foi testado em celular com duas contas reais (só testes de
   unidade e chamadas de erro na função). Conferir: envio de foto, envelope de chave
   entre dois aparelhos, notificação em segundo plano.

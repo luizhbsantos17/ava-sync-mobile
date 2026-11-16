@@ -104,11 +104,11 @@ void main() {
       final h = lerHorario(horario, ds);
       final redes = por(ds, 'Redes de Computadores');
       final f = frequencia(redes, aulasPorDia: aulasPorDia(redes.nome, h));
-      expect(f.limite, 15); // 25% de 60 aulas previstas
-      expect(f.restantes, 1);
+      expect(f.limite, 18); // 60 horas = 72 aulas de 50 minutos
+      expect(f.restantes, 4);
       expect(f.aulasPorDia, 2);
-      expect(f.diasRestantes, 0);
-      expect(f.emRisco, isTrue);
+      expect(f.diasRestantes, 2);
+      expect(f.emRisco, isFalse);
     });
 
     test('pagina sem diarios conta como nao lida', () {
