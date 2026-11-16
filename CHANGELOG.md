@@ -38,6 +38,8 @@ essa seção quando a versão atual ainda não tem uma.
 - **Notificações do Social mostram cada mensagem**: uma notificação por grupo/canal ou
   conversa, com quem mandou e o texto. Várias mensagens seguidas se juntam na mesma
   notificação (como no WhatsApp) e ela some quando você abre a conversa.
+### Corrigido
+- **Faltas no Acadêmico**: limites corrigidos de 7, 15 e 22 para 9, 18 e 27 nas disciplinas de 30, 60 e 90 horas, com ajuste das faltas e dias restantes.
 
 ## [0.8.0] - 2026-11-15
 ### Adicionado

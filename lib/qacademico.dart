@@ -200,7 +200,10 @@ class Frequencia {
 /// Q-Academico (quando lido do diario) vale mais que [minima].
 Frequencia frequencia(Disciplina d, {double minima = 75, int aulasPorDia = 2}) {
   final min = d.minima ?? minima;
-  final total = (d.aulas ?? 0) > 0 ? d.aulas : d.carga;
+  // O Q-Academico pode repetir a carga em horas no campo de aulas previstas.
+  // Cada hora equivale a 60/50 aulas; nao reconverter totais ja distintos da carga.
+  final aulas = (d.aulas ?? 0) > 0 ? d.aulas : null;
+  final total = aulas != null && aulas != d.carga ? aulas : d.carga == null ? null : d.carga! * 60 / 50;
   final faltas = d.faltas ?? 0;
   double? pres = d.frequencia;
   if (pres == null && total != null && total > 0) pres = (100 * (1 - faltas / total)).clamp(0, 100).toDouble();
