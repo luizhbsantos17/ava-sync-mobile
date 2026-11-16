@@ -20,6 +20,24 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+### Adicionado
+- **AVA Sync para computador** (Windows, Linux e macOS): prazos, matérias, notas e o
+  Social, com a mesma conta do AVA. Baixe na página de versões do GitHub.
+- No computador, o app **fica na bandeja** (perto do relógio) ao fechar a janela e continua
+  sincronizando, avisando de prazos e de mensagens novas. Para fechar de vez, use "Sair"
+  no ícone da bandeja.
+- **Abre junto com o sistema**, escondido na bandeja (dá para desligar em Ajustes > Computador).
+- **Notificações do Social em tempo real**: a mensagem nova aparece na hora no computador
+  (mesmo com a janela fechada) e no celular, **inclusive com o app fechado**.
+- **Tela grande**: menu lateral, conteúdo centralizado e o Social com a lista e a conversa
+  lado a lado, como no Discord.
+- **Atalhos**: F5 ou Ctrl+R sincronizam; clique com o botão direito abre os mesmos menus
+  de segurar o dedo no celular.
+- No Windows, a **atualização é automática**: o app baixa, instala e abre de novo sozinho.
+### Alterado
+- **Notificações do Social mostram cada mensagem**: uma notificação por grupo/canal ou
+  conversa, com quem mandou e o texto. Várias mensagens seguidas se juntam na mesma
+  notificação (como no WhatsApp) e ela some quando você abre a conversa.
 
 ## [0.8.0] - 2026-11-15
 ### Adicionado

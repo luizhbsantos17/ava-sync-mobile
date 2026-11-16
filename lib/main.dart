@@ -1,12 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'atualizacao.dart';
+import 'compromissos.dart';
 import 'config.dart';
+import 'desktop/janela.dart';
 import 'estado_app.dart';
 import 'fundo.dart';
+import 'plataforma.dart';
+import 'social/escuta.dart';
+import 'social/push.dart';
 import 'tema.dart';
 import 'util.dart';
 import 'telas/atualizar.dart';
@@ -14,17 +20,21 @@ import 'telas/inicio.dart';
 import 'telas/login.dart';
 import 'telas/social.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // computador: uma cópia só (a segunda pede para a primeira aparecer e fecha)
+  if (Plataforma.desktop && !await JanelaDesktop.garantirUnica()) exit(0);
   await Cfg.init();
   temaAtual.value = Tema.deTexto(Cfg.temaJson);
   try {
     await Notif.init();
-    await Workmanager().initialize(callbackDispatcher);
+    if (Plataforma.celular) await Workmanager().initialize(callbackDispatcher);
   } catch (_) {}
+  if (Plataforma.desktop) await JanelaDesktop.instancia.iniciar(args);
   runApp(const AvaSyncApp());
   await app.carregar();
   Notif.aoTocar = (payload) {
+    if (Plataforma.desktop) JanelaDesktop.instancia.mostrar();
     if (payload == payloadAtualizar) unawaited(procurarAtualizacao(forcar: true));
     if (payload != null && payload.startsWith('social:')) unawaited(_abrirSocial(payload));
   };
@@ -36,6 +46,15 @@ Future<void> main() async {
   if (abriuPor != null && abriuPor.startsWith('social:')) unawaited(_abrirSocial(abriuPor));
   if (app.logado) {
     await agendar();
+    // Social em tempo real: notifica na hora (computador sempre; celular com o app aberto)
+    if (Cfg.socialUsado) {
+      EscutaSocial.iniciarNoApp();
+      unawaited(PushSocial.registrar()); // Android: avisos na hora com o app fechado
+    }
+    if (Plataforma.desktop && Cfg.lembretePrazo) {
+      // lembretes de prazo voltam a valer ao abrir o computador (sem esperar sincronizar)
+      await Notif.agendarLembretes(lembretes(compromissos(app.snap, Cfg.atualManual), agoraSeg()));
+    }
     if (!Cfg.permissaoPedida) {
       await Cfg.setPermissaoPedida(true);
       await Notif.pedirPermissao();

@@ -7,9 +7,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../config.dart';
-import '../fundo.dart';
 import 'api.dart';
+import 'escuta.dart';
 import 'models.dart';
+import 'notificacoes.dart';
+import 'push.dart';
 import 'supabase_crypto.dart';
 
 /// Estado do Social compartilhado pelas telas: perfil, conversas, perfis em cache,
@@ -36,15 +38,17 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
   bool _observing = false;
   DateTime _lastKeyWork = DateTime.fromMillisecondsSinceEpoch(0);
   final Map<String, int> _lastUnread = {};
-  bool _firstOverview = true;
 
   // ------------------------------------------------------------ ciclo de vida
   Future<void> start() async {
+    NotifSocial.canalVisivel ??= () => _foreground ? activeChannelId : null;
     if (!_observing) {
       WidgetsBinding.instance.addObserver(this);
       _observing = true;
     }
     await Cfg.setSocialUsado(true);
+    EscutaSocial.iniciarNoApp();
+    unawaited(PushSocial.registrar());
     if (!ready) await refresh(showLoading: true);
     _schedule();
   }
@@ -165,17 +169,12 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
 
   void _notifyNew(List<SocialConversation> list) {
     for (final c in list) {
+      // a notificação com o texto de cada mensagem vem da escuta em tempo real
+      // (EscutaSocial); aqui só acompanhamos os contadores.
       for (final ch in c.channels) {
-        final before = _lastUnread[ch.id] ?? 0;
         _lastUnread[ch.id] = ch.unread;
-        if (_firstOverview || c.muted || !Cfg.socialNotificacoes) continue;
-        if (ch.unread > before && ch.id != activeChannelId) {
-          final title = c.direta ? c.nome : '${c.nome} · #${ch.name}';
-          unawaited(Notif.mostrarSocial(c.id.hashCode ^ ch.id.hashCode, title, c.preview, payload: 'social:${c.id}:${ch.id}'));
-        }
       }
     }
-    _firstOverview = false;
   }
 
   SocialConversation? conversation(String id) {
@@ -196,6 +195,7 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
             : c,
     ];
     _lastUnread[channelId] = 0;
+    unawaited(NotifSocial.lida(conversationId, channelId));
     notifyListeners();
   }
 

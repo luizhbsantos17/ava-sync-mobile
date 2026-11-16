@@ -13,6 +13,9 @@ class Cfg {
   static const _seg = FlutterSecureStorage();
   static late SharedPreferences _p;
 
+  /// Relê as preferências do disco (o segundo plano do Android grava por outro processo).
+  static Future<void> recarregar() => _p.reload();
+
   static Future<void> init() async {
     _p = await SharedPreferences.getInstance();
     await _p.reload(); // em segundo plano, pega o que a tela salvou
@@ -67,6 +70,23 @@ class Cfg {
   static Future<void> setSocialUsado(bool v) => _p.setBool('social_usado', v);
   static String get socialUltimaNotif => _p.getString('social_ultima_notif') ?? '';
   static Future<void> setSocialUltimaNotif(String v) => _p.setString('social_ultima_notif', v);
+  /// Mensagens já avisadas e ainda não lidas, por conversa/canal (JSON). Assim a
+  /// notificação acumula "Ana: oi / Bia: tudo bem?" em vez de mostrar só a última.
+  /// Token do push (Firebase) já registrado no servidor, e quando.
+  static String get pushToken => _p.getString('push_token') ?? '';
+  static int get pushRegistradoEm => _p.getInt('push_em') ?? 0;
+  static Future<void> setPushToken(String t, int em) async {
+    await _p.setString('push_token', t);
+    await _p.setInt('push_em', em);
+  }
+
+  /// Ids das últimas mensagens já notificadas (o push e a escuta podem ver a mesma).
+  static List<String> get socialNotifIds => _p.getStringList('social_notif_ids') ?? const [];
+  static Future<void> setSocialNotifIds(List<String> v) =>
+      _p.setStringList('social_notif_ids', v.length > 300 ? v.sublist(v.length - 300) : v);
+
+  static String get socialNotifPendentes => _p.getString('social_notif_pend') ?? '{}';
+  static Future<void> setSocialNotifPendentes(String v) => _p.setString('social_notif_pend', v);
   static List<String> get socialEmojisRecentes => _p.getStringList('social_emojis') ?? const ['👍', '❤️', '😂', '😮', '😢', '🔥'];
   static Future<void> setSocialEmojisRecentes(List<String> v) => _p.setStringList('social_emojis', v.take(12).toList());
   static String get socialRascunhos => _p.getString('social_rascunhos') ?? '{}';
@@ -100,6 +120,14 @@ class Cfg {
   /// chave do compromisso -> id do evento criado no calendario
   static Map<String, dynamic> get calendarioEventos => _json('cal_eventos');
   static Future<void> setCalendarioEventos(Map<String, dynamic> m) => _p.setString('cal_eventos', jsonEncode(m));
+
+  // ---- computador (Windows, Linux, macOS) ----
+  /// Fechar a janela deixa o app rodando na bandeja (sincroniza e avisa em segundo plano).
+  static bool get fecharParaBandeja => _p.getBool('desk_bandeja') ?? true;
+  static Future<void> setFecharParaBandeja(bool v) => _p.setBool('desk_bandeja', v);
+  /// Abrir junto com o sistema (escondido na bandeja).
+  static bool get iniciarComSistema => _p.getBool('desk_iniciar') ?? true;
+  static Future<void> setIniciarComSistema(bool v) => _p.setBool('desk_iniciar', v);
 
   // ---- perfil e aparencia ----
   static String get temaJson => _p.getString('tema') ?? '';

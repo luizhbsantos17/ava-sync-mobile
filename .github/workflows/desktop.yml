@@ -1,0 +1,147 @@
+name: Gerar apps de computador
+
+# Chamado por build.yml (oficial) e build-beta.yml (beta) depois que o APK publica a
+# release. Assim o computador e o celular saem do mesmo commit, com o mesmo número de
+# build e as mesmas notas de versão. Cada job só acrescenta o seu arquivo à release.
+on:
+  workflow_call:
+    inputs:
+      canal:
+        description: production ou beta
+        required: true
+        type: string
+      tag:
+        description: release que recebe os arquivos (latest ou beta)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  BUILD: ${{ github.run_number }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Nome do canal
+        shell: bash
+        run: |
+          versao=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*([^+]+).*/\1/')
+          echo "VERSAO=$versao" >> "$GITHUB_ENV"
+          if [ "${{ inputs.canal }}" = beta ]; then
+            # nome diferente = pasta de dados diferente: a beta roda ao lado da oficial
+            sed -i 's/"AVA Sync" "\\0"/"AVA Sync Teste" "\\0"/' windows/runner/Runner.rc
+            sed -i 's/L"AVA Sync"/L"AVA Sync Teste"/' windows/runner/main.cpp
+            echo 'NOME=AVA Sync Teste' >> "$GITHUB_ENV"
+            echo 'APPID={{6E2A9C41-7B3D-4F8E-A1C5-0D9B2E4F7A63}' >> "$GITHUB_ENV"
+            echo 'ARQUIVO=AVA-Sync-Beta-Windows.exe' >> "$GITHUB_ENV"
+          else
+            echo 'NOME=AVA Sync' >> "$GITHUB_ENV"
+            echo 'APPID={{8B0F5E36-2C4D-4C1B-9A7E-5D2F1A6C3B90}' >> "$GITHUB_ENV"
+            echo 'ARQUIVO=AVA-Sync-Windows.exe' >> "$GITHUB_ENV"
+          fi
+
+      - run: flutter pub get
+      - name: Compilar
+        run: >
+          flutter build windows --release --build-number ${{ env.BUILD }}
+          --dart-define=AVA_SYNC_CHANNEL=${{ inputs.canal }}
+          --dart-define=AVA_SYNC_BUILD=${{ env.BUILD }}
+
+      - name: Instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress | Out-Null }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DNome=$env:NOME" "/DAppId=$env:APPID" "/DVersao=$env:VERSAO" windows\instalador.iss
+          Copy-Item build\instalador\setup.exe $env:ARQUIVO
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARQUIVO }}
+          path: ${{ env.ARQUIVO }}
+
+      - name: Publicar na release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" "$ARQUIVO" --clobber
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Bibliotecas do Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev libx11-dev libxi-dev libsecret-1-dev
+      - name: Nome do canal
+        run: |
+          if [ "${{ inputs.canal }}" = beta ]; then
+            sed -i 's/io.github.avasync.desktop"/io.github.avasync.desktop.beta"/' linux/CMakeLists.txt
+            sed -i 's/"AVA Sync"/"AVA Sync Teste"/g' linux/runner/my_application.cc
+            echo 'ARQUIVO=AVA-Sync-Beta-Linux.tar.gz' >> "$GITHUB_ENV"
+          else
+            echo 'ARQUIVO=AVA-Sync-Linux.tar.gz' >> "$GITHUB_ENV"
+          fi
+      - run: flutter pub get
+      - run: >
+          flutter build linux --release --build-number "$BUILD"
+          --dart-define=AVA_SYNC_CHANNEL=${{ inputs.canal }}
+          --dart-define=AVA_SYNC_BUILD="$BUILD"
+      - run: tar -czf "$ARQUIVO" -C build/linux/x64/release/bundle .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARQUIVO }}
+          path: ${{ env.ARQUIVO }}
+      - name: Publicar na release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" "$ARQUIVO" --clobber
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Nome do canal
+        run: |
+          if [ "${{ inputs.canal }}" = beta ]; then
+            sed -i '' 's/^PRODUCT_NAME = AVA Sync$/PRODUCT_NAME = AVA Sync Teste/' macos/Runner/Configs/AppInfo.xcconfig
+            sed -i '' 's/^PRODUCT_BUNDLE_IDENTIFIER = io.github.avasync.desktop$/PRODUCT_BUNDLE_IDENTIFIER = io.github.avasync.desktop.beta/' macos/Runner/Configs/AppInfo.xcconfig
+            echo 'APP=AVA Sync Teste.app' >> "$GITHUB_ENV"
+            echo 'ARQUIVO=AVA-Sync-Beta-macOS.zip' >> "$GITHUB_ENV"
+          else
+            echo 'APP=AVA Sync.app' >> "$GITHUB_ENV"
+            echo 'ARQUIVO=AVA-Sync-macOS.zip' >> "$GITHUB_ENV"
+          fi
+      - run: flutter pub get
+      - run: >
+          flutter build macos --release --build-number "$BUILD"
+          --dart-define=AVA_SYNC_CHANNEL=${{ inputs.canal }}
+          --dart-define=AVA_SYNC_BUILD="$BUILD"
+      - run: ditto -c -k --keepParent "build/macos/Build/Products/Release/$APP" "$ARQUIVO"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARQUIVO }}
+          path: ${{ env.ARQUIVO }}
+      - name: Publicar na release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" "$ARQUIVO" --clobber

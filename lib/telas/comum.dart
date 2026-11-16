@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -10,6 +9,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../config.dart';
 import '../estado_app.dart';
 import '../moodle.dart';
+import '../plataforma.dart';
 import '../util.dart';
 import 'navegacao.dart';
 
@@ -40,16 +40,17 @@ Future<void> abrirLocal(BuildContext context, String caminho, {String? titulo}) 
     return;
   }
   final ext = caminho.toLowerCase().split('.').last;
-  if (ext == 'html' || ext == 'htm') {
+  if ((ext == 'html' || ext == 'htm') && Plataforma.celular) {
     if (context.mounted) {
       Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => WebLeitorTela(titulo: titulo ?? caminho.split('/').last, arquivo: caminho)));
     }
     return;
   }
-  final r = await OpenFilex.open(caminho);
-  if (r.type != ResultType.done && context.mounted) {
-    aviso(context, 'Nenhum app para abrir este arquivo (${r.message}).');
+  // no computador, HTML abre no navegador padrão (com imagens e estilos da pasta)
+  final erro = await abrirNoSistema(caminho);
+  if (erro != null && context.mounted) {
+    aviso(context, 'Nenhum app para abrir este arquivo ($erro).');
   }
 }
 
@@ -158,8 +159,10 @@ class LeitorTela extends StatelessWidget {
         IconButton(
             tooltip: 'Ver original (página completa)',
             icon: const Icon(Icons.web),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => WebLeitorTela(titulo: titulo, arquivo: caminho)))),
+            onPressed: () => Plataforma.desktop
+                ? abrirNoSistema(caminho)
+                : Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => WebLeitorTela(titulo: titulo, arquivo: caminho)))),
         if (link != null)
           IconButton(
               tooltip: 'Abrir no AVA', icon: const Icon(Icons.open_in_new), onPressed: () => abrirLinkExterno(context, link)),
@@ -218,7 +221,7 @@ class _WebLeitorTelaState extends State<WebLeitorTela> {
         IconButton(
             tooltip: 'Abrir com outro app',
             icon: const Icon(Icons.open_in_browser),
-            onPressed: () => OpenFilex.open(widget.arquivo)),
+            onPressed: () => abrirNoSistema(widget.arquivo)),
       ]),
       body: WebViewWidget(controller: _c),
     );

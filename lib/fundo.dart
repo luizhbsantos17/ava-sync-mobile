@@ -9,6 +9,8 @@ import 'atualizacao.dart';
 import 'calendario.dart';
 import 'compromissos.dart';
 import 'config.dart';
+import 'desktop/segundo_plano.dart';
+import 'plataforma.dart';
 import 'social/notificacoes.dart';
 import 'sync.dart';
 import 'util.dart';
@@ -27,7 +29,16 @@ class Notif {
   static Future<void> init() async {
     if (_ok) return;
     await p.initialize(
-      settings: const InitializationSettings(android: AndroidInitializationSettings('ic_stat_ava')),
+      settings: InitializationSettings(
+        android: const AndroidInitializationSettings('ic_stat_ava'),
+        macOS: const DarwinInitializationSettings(
+            requestAlertPermission: false, requestBadgePermission: false, requestSoundPermission: false),
+        linux: const LinuxInitializationSettings(defaultActionName: 'Abrir'),
+        windows: WindowsInitializationSettings(
+            appName: Atualizacao.canal == 'beta' ? 'AVA Sync Teste' : 'AVA Sync',
+            appUserModelId: Atualizacao.canal == 'beta' ? 'AvaSync.Desktop.Beta' : 'AvaSync.Desktop',
+            guid: Atualizacao.canal == 'beta' ? '6f1d3b52-8c0e-4a8b-9d55-1b7e4f2c9a31' : '3c8e2a17-5d4b-4f0a-8e61-9a2b7c4d1e58'),
+      ),
       onDidReceiveNotificationResponse: (r) => aoTocar?.call(r.payload),
     );
     _ok = true;
@@ -44,6 +55,9 @@ class Notif {
     await p
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+    await p
+        .resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   static NotificationDetails _detalhes(String corpo, {String canal = 'ava'}) => NotificationDetails(
@@ -65,14 +79,16 @@ class Notif {
     await p.show(id: id, title: titulo, body: corpo, notificationDetails: _detalhes(corpo), payload: payload);
   }
 
-  /// Mensagem do Social (canal próprio, agrupado por conversa).
-  static Future<void> mostrarSocial(int id, String titulo, String corpo, {String? payload}) async {
+  /// Notificação de uma conversa do Social: cada mensagem com quem mandou, acumulando
+  /// (no Android, no estilo de conversa do sistema, igual WhatsApp).
+  static Future<void> mostrarConversa(ConversaNotif n) async {
     await init();
+    final eu = const Person(name: 'Você');
     await p.show(
-      id: 5000 + (id.abs() % 4000),
-      title: titulo,
-      body: corpo,
-      payload: payload,
+      id: 5000 + (n.id.abs() % 4000),
+      title: n.titulo,
+      body: corpoSimples(n),
+      payload: n.payload,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails('social', 'Social',
             channelDescription: 'Mensagens dos grupos e conversas',
@@ -80,9 +96,23 @@ class Notif {
             priority: Priority.high,
             groupKey: 'social',
             category: AndroidNotificationCategory.message,
-            styleInformation: BigTextStyleInformation(corpo)),
+            number: n.total,
+            styleInformation: MessagingStyleInformation(
+              eu,
+              conversationTitle: n.direta ? null : n.titulo,
+              groupConversation: !n.direta,
+              messages: [
+                for (final l in n.linhas)
+                  Message(l.texto, DateTime.fromMillisecondsSinceEpoch(l.quando), Person(name: l.nome, key: l.nome)),
+              ],
+            )),
       ),
     );
+  }
+
+  static Future<void> cancelar(int idConversa) async {
+    await init();
+    await p.cancel(id: 5000 + (idConversa.abs() % 4000));
   }
 
   static const _idLembrete = 1000;
@@ -91,6 +121,11 @@ class Notif {
   /// Troca todos os lembretes agendados pelos de [lista] (o Android dispara mesmo com o
   /// app fechado, sem precisar de sincronizacao naquele momento).
   static Future<void> agendarLembretes(List<Lembrete> lista) async {
+    if (Plataforma.desktop) {
+      // no computador o app fica aberto na bandeja e dispara os lembretes na hora
+      SegundoPlanoDesktop.definirLembretes(lista);
+      return;
+    }
     await init();
     for (final pend in await p.pendingNotificationRequests()) {
       if (pend.id >= _idLembrete && pend.id < _idLembrete + _maxLembretes) await p.cancel(id: pend.id);
@@ -121,7 +156,7 @@ Future<void> avisar(ResultadoSync r) async {
   try {
     await Notif.agendarLembretes(Cfg.lembretePrazo ? lembretes(lista, agoraSeg()) : const []);
   } catch (_) {}
-  if (Cfg.calendario) {
+  if (Cfg.calendario && Plataforma.temAgenda) {
     try {
       await Calendario.sincronizar(lista);
     } catch (_) {}
@@ -134,7 +169,8 @@ Future<void> avisarAtualizacao() async {
   if (info == null || Cfg.updNotificado >= info.build) return;
   await Cfg.setUpdNotificado(info.build);
   await Notif.mostrar(2, 'Atualização do AVA Sync disponível',
-      'Versão ${info.build} pronta. Toque para atualizar sem desinstalar.', payload: payloadAtualizar);
+      'Versão ${info.build} pronta. ${Plataforma.desktop ? 'Clique' : 'Toque'} para atualizar sem desinstalar.',
+      payload: payloadAtualizar);
 }
 
 const tarefaSync = 'ava-sync';
@@ -166,6 +202,10 @@ void callbackDispatcher() {
 }
 
 Future<void> agendar() async {
+  if (Plataforma.desktop) {
+    SegundoPlanoDesktop.iniciar();
+    return;
+  }
   final wm = Workmanager();
   if (Cfg.socialUsado && Cfg.socialNotificacoes) {
     await wm.registerPeriodicTask(

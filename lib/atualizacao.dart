@@ -4,12 +4,14 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'config.dart';
+import 'plataforma.dart';
 import 'util.dart';
 
 /// Busca a versão publicada pelo workflow do repositório.
 class AtualizacaoInfo {
   final int build;
   final int buildInstalado;
+  /// Arquivo de instalação desta plataforma (APK no Android, instalador no Windows...).
   final String apkUrl;
   final String releaseUrl;
   final String versao;
@@ -38,7 +40,18 @@ class Atualizacao {
   static const _repo = 'luizhbsantos17/ava-sync-mobile';
   static const canal = String.fromEnvironment('AVA_SYNC_CHANNEL', defaultValue: 'production');
   static const _tagRelease = canal == 'beta' ? 'beta' : 'latest';
-  static const _nomeApk = canal == 'beta' ? 'AVA-Sync-Beta.apk' : 'AVA-Sync.apk';
+  static String get _nomeArquivo => nomeDoArquivo(beta: canal == 'beta', plataforma: Plataforma.nome);
+
+  /// Nome do arquivo publicado na release para cada plataforma (o workflow usa os mesmos).
+  static String nomeDoArquivo({required bool beta, required String plataforma}) {
+    final base = beta ? 'AVA-Sync-Beta' : 'AVA-Sync';
+    return switch (plataforma) {
+      'Windows' => '$base-Windows.exe',
+      'Linux' => '$base-Linux.tar.gz',
+      'macOS' => '$base-macOS.zip',
+      _ => '$base.apk',
+    };
+  }
   static const buildInstalado = int.fromEnvironment('AVA_SYNC_BUILD', defaultValue: 0);
 
   static Future<AtualizacaoInfo> verificar({http.Client? cliente}) async {
@@ -62,9 +75,11 @@ class Atualizacao {
       if (build == null) throw Exception('Não consegui identificar a versão publicada.');
 
       final assets = (release['assets'] as List<dynamic>? ?? const []).map((e) => e as Map<String, dynamic>);
-      final apk = assets.where((e) => e['name'] == _nomeApk).firstOrNull;
+      final apk = assets.where((e) => e['name'] == _nomeArquivo).firstOrNull;
       final apkUrl = '${apk?['browser_download_url'] ?? ''}';
-      if (apkUrl.isEmpty) throw Exception('O APK da versão publicada ainda não está disponível.');
+      if (apkUrl.isEmpty) {
+        throw Exception('O arquivo da versão publicada para ${Plataforma.nome} ainda não está disponível.');
+      }
 
       return AtualizacaoInfo(
         build: build,
@@ -110,10 +125,11 @@ class DownloadApk {
     http.Client? cliente,
     bool Function()? cancelado,
     Duration ocioso = ociosoMax,
+    String nome = 'AVA-Sync.apk',
   }) async {
     final client = cliente ?? http.Client();
     await pasta.create(recursive: true);
-    final destino = File('${pasta.path}/AVA-Sync.apk');
+    final destino = File('${pasta.path}/$nome');
     final parcial = File('${destino.path}.part');
     IOSink? sink;
     try {
@@ -141,7 +157,7 @@ class DownloadApk {
       if (total != null && recebido != total) {
         throw Exception('Download incompleto ($recebido de $total bytes). Tente de novo.');
       }
-      if (recebido < 1024 * 1024) throw Exception('O arquivo baixado não parece um APK válido.');
+      if (recebido < 1024 * 1024) throw Exception('O arquivo baixado não parece um instalador válido.');
       if (await destino.exists()) await destino.delete();
       return await parcial.rename(destino.path);
     } catch (_) {

@@ -47,6 +47,22 @@ GitHub Releases <-- lib/atualizacao.dart        Supabase Edge Function "social" 
   conversa vem do convite ou de um envelope X25519 de outro membro. Tempo real por
   long polling (`poll`, até 20 s). Professor confirmado por `core_enrol_get_enrolled_users`.
 
+## Computador (Windows, Linux, macOS)
+- Mesmo código do Android. `Plataforma.desktop` (`lib/plataforma.dart`) separa o que é
+  de sistema; as telas decidem o layout pela largura (`InicioTela.larguraLarga`, 900 px;
+  Social em painéis a partir de 760 px, `lib/telas/social/painel.dart`).
+- `lib/desktop/janela.dart`: janela (`window_manager`), bandeja (`tray_manager`), uma cópia
+  só (porta local 47231/47232), fechar = esconder. `--oculto` abre escondido.
+- `lib/desktop/segundo_plano.dart`: relógio de 30 s no lugar do workmanager (sync no
+  intervalo de Ajustes, Social a cada 1 min, lembretes na hora, atualização a cada 6 h).
+- `lib/desktop/iniciar_com_sistema.dart`: registro `Run` (Windows), `~/.config/autostart`
+  (Linux), LaunchAgent (macOS).
+- `lib/navegador_web.dart`: navegador do Q-Acadêmico; `webview_flutter` no Android/macOS,
+  WebView2 (`webview_windows`) no Windows, nenhum no Linux.
+- Atualização: arquivo da release por sistema (`Atualizacao.nomeDoArquivo`). Windows
+  baixa o instalador e roda em modo silencioso (`windows/instalador.iss`); Linux e macOS
+  abrem o download no navegador.
+
 ## Build e distribuição
 - Flavors Android: `production` (`io.github.avasync.mobile`, "AVA Sync") e `beta`
   (`io.github.avasync.mobile.beta`, "AVA Sync Teste"). Mesma chave de assinatura.

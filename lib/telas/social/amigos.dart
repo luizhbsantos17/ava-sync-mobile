@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 
 import '../../social/models.dart';
-import 'chat.dart';
+import 'painel.dart';
 import 'perfil.dart';
 import 'widgets.dart';
 
@@ -54,7 +54,7 @@ class _AmigosAbaState extends State<AmigosAba> {
       final id = await social.openDm(p.userKey);
       final c = social.conversation(id);
       if (c != null && c.primeiroCanal != null && mounted) {
-        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatTela(conversa: c, canal: c.primeiroCanal!)));
+        await abrirChat(context, c, c.primeiroCanal!);
       }
     } catch (e) {
       if (mounted) mostrarAviso(context, e);

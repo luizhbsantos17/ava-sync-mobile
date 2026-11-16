@@ -4,13 +4,14 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../config.dart';
 import '../../social/feed.dart';
 import '../../social/models.dart';
+import '../../plataforma.dart';
+import 'painel.dart';
 import 'emojis.dart';
 import 'grupo.dart';
 import 'perfil.dart';
@@ -381,11 +382,7 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
       ),
     );
     if (canal != null && canal.id != widget.canal.id && mounted) {
-      await Navigator.of(context).pushReplacement(PageRouteBuilder(
-        pageBuilder: (_, _, _) => ChatTela(conversa: c, canal: canal),
-        transitionDuration: const Duration(milliseconds: 160),
-        transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
-      ));
+      await abrirChat(context, c, canal, trocandoCanal: true);
     }
   }
 
@@ -894,6 +891,7 @@ class _MensagemState extends State<_Mensagem> {
 
     return GestureDetector(
       onLongPress: widget.aoSegurar,
+      onSecondaryTap: widget.aoSegurar, // clique direito no computador
       onHorizontalDragUpdate: widget.aoResponder == null
           ? null
           : (d) {
@@ -1029,8 +1027,8 @@ class _Anexo extends StatelessWidget {
     final dir = await getTemporaryDirectory();
     final f = File('${dir.path}/social_${a.path.hashCode.abs()}_${a.name.replaceAll(RegExp(r'[^\w.\- ]'), '_')}');
     await f.writeAsBytes(bytes, flush: true);
-    final r = await OpenFilex.open(f.path, type: a.mime);
-    if (r.type != ResultType.done && context.mounted) {
+    final erro = await abrirNoSistema(f.path, tipo: a.mime);
+    if (erro != null && context.mounted) {
       await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: a.mime)]));
     }
   }

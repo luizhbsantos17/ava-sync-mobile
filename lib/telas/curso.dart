@@ -120,7 +120,9 @@ class ItemLinha extends StatelessWidget {
             'quiz' => Icons.checklist,
             _ => Icons.event_outlined,
           };
-    return ListTile(
+    final menu = tipo == 'acao' ? null : () => menuCategoria(context, tipo, item);
+    // clique direito no computador = segurar no celular
+    return GestureDetector(onSecondaryTap: menu, child: ListTile(
       leading: CircleAvatar(backgroundColor: u.cor.withValues(alpha: 0.15), child: Icon(icone, color: u.cor)),
       title: Text('${item['nome']}', maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -134,8 +136,8 @@ class ItemLinha extends StatelessWidget {
         ]),
       ]),
       onTap: () => abrirItem(context, e),
-      onLongPress: tipo == 'acao' ? null : () => menuCategoria(context, tipo, item),
-    );
+      onLongPress: menu,
+    ));
   }
 }
 

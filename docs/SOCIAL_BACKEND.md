@@ -90,3 +90,20 @@ Mensagem sem canal cai no primeiro canal da conversa (gatilho `social_message_de
    agente que ele autorizou): `supabase db push` e `supabase functions deploy social --no-verify-jwt`.
 4. Sem token, a função responde "Endereço do AVA ausente."; sessão inválida responde
    401 "Sessão do Social expirada.".
+
+## Notificações em tempo real (`inbox`)
+- `inbox {since}`: long polling (até 20 s) da caixa de entrada da pessoa. Responde assim que
+  existe mensagem de outra pessoa, não apagada, em conversa não silenciada, criada depois
+  de `since`. Mesmo formato de `notifications` (mensagens cifradas, títulos, canais, perfis).
+- O aparelho decifra e mostra; o servidor nunca vê o texto. Apps antigos seguem usando
+  `notifications`, que não mudou.
+
+## Push (Firebase Cloud Messaging)
+- Tabela `social_push_tokens` (token, user_key, platform), só para a Edge Function.
+- `push_register {token}` / `push_unregister {token}`: o celular registra o token ao abrir
+  o Social e o apaga ao sair da conta.
+- `send_message` dispara, em segundo plano (`EdgeRuntime.waitUntil`), um aviso de dados
+  `{tipo: "social", conversa, canal}` para os aparelhos dos outros membros não silenciados.
+  Sem conteúdo: o aparelho decifra e monta a notificação.
+- Segredo `FCM_SERVICE_ACCOUNT` (JSON da conta de serviço). Sem ele, nada é enviado.
+  Configuração completa em `docs/FIREBASE_PUSH.md`.

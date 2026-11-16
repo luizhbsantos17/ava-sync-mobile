@@ -12,6 +12,8 @@
 // Compatibilidade: as ações antigas (me, list, messages, send_message, join_group,
 // create_group) continuam funcionando para o app 0.7.0 (build 11).
 
+import { enviarPush, pushConfigurado } from "./push.ts";
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -376,6 +378,50 @@ async function leave(conversationId: string, userId: string) {
   }
 }
 
+function sinceOf(payload: Row) {
+  return typeof payload.since === "string" ? payload.since : new Date(Date.now() - 3600_000).toISOString();
+}
+
+async function unmutedConversations(userId: string) {
+  const members = await db(`social_members?user_key=eq.${q(userId)}&muted=eq.false&select=conversation_id`) as Row[];
+  return members.map((m) => String(m.conversation_id));
+}
+
+/// Mensagens novas (de outras pessoas) depois de `since`, com títulos, canais e perfis
+/// para montar a notificação no aparelho.
+async function inboxSince(userId: string, since: string, ids: string[]) {
+  if (!ids.length) return { messages: [], conversations: [], channels: [], profiles: {} };
+  const rows = await db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=${MESSAGE_FIELDS}&order=created_at.desc&limit=30`) as Row[];
+  const convIds = [...new Set(rows.map((r) => String(r.conversation_id)))];
+  const chIds = [...new Set(rows.map((r) => String(r.channel_id)))];
+  const [conversations, channels, profiles] = await Promise.all([
+    convIds.length ? db(`social_conversations?id=in.(${convIds.map(q).join(",")})&select=id,title,group_kind`) : Promise.resolve([]),
+    chIds.length ? db(`social_channels?id=in.(${chIds.map(q).join(",")})&select=id,name`) : Promise.resolve([]),
+    profilesByKeys(rows.map((r) => String(r.sender_id))),
+  ]);
+  return { messages: rows, conversations, channels, profiles };
+}
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
+
+/// Continua o trabalho depois de responder (Supabase Edge Runtime); fora dele, só não espera.
+function emSegundoPlano(p: Promise<unknown>) {
+  const segura = p.catch((e) => console.error("segundo plano:", e));
+  if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(segura);
+}
+
+/// Push para os aparelhos dos outros membros (não silenciados) da conversa.
+async function avisarMembros(conversationId: string, channelId: string, senderId: string) {
+  if (!pushConfigurado()) return;
+  const membros = await db(`social_members?conversation_id=eq.${q(conversationId)}&user_key=neq.${q(senderId)}&muted=eq.false&select=user_key`) as Row[];
+  if (!membros.length) return;
+  const tokens = await db(`social_push_tokens?user_key=in.(${membros.map((m) => qv(String(m.user_key))).join(",")})&select=token`) as Row[];
+  const invalidos = await enviarPush(tokens.map((t) => String(t.token)), { tipo: "social", conversa: conversationId, canal: channelId });
+  if (invalidos.length) {
+    await db(`social_push_tokens?token=in.(${invalidos.map(q).join(",")})`, "DELETE", undefined, "return=minimal");
+  }
+}
+
 // ---------------------------------------------------------------- ações
 const moodleActions = new Set(["session", "me", "teacher_courses", "create_course_group"]);
 
@@ -413,20 +459,40 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     return { me: shapeProfile(me, true), conversations, envelopes, keyRequests, pendingFriends: (pending as Row[]).length };
   },
 
+  // --- push (Firebase): cada aparelho Android registra o seu token
+  async push_register({ userId, payload }) {
+    const token = str(payload.token, 4096);
+    if (token.length < 20) fail("Token de notificação inválido.");
+    await db("social_push_tokens?on_conflict=token", "POST",
+      { token, user_key: userId, platform: "android", updated_at: new Date().toISOString() },
+      "resolution=merge-duplicates,return=minimal");
+    return { ok: true, push: pushConfigurado() };
+  },
+  async push_unregister({ userId, payload }) {
+    const token = str(payload.token, 4096);
+    await db(`social_push_tokens?token=eq.${q(token)}&user_key=eq.${q(userId)}`, "DELETE", undefined, "return=minimal");
+    return { ok: true };
+  },
+
   async notifications({ userId, payload }) {
-    const since = typeof payload.since === "string" ? payload.since : new Date(Date.now() - 3600_000).toISOString();
-    const members = await db(`social_members?user_key=eq.${q(userId)}&muted=eq.false&select=conversation_id`) as Row[];
-    const ids = members.map((m) => String(m.conversation_id));
-    if (!ids.length) return { messages: [], conversations: [], channels: [], profiles: {} };
-    const rows = await db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=${MESSAGE_FIELDS}&order=created_at.desc&limit=30`) as Row[];
-    const convIds = [...new Set(rows.map((r) => String(r.conversation_id)))];
-    const chIds = [...new Set(rows.map((r) => String(r.channel_id)))];
-    const [conversations, channels, profiles] = await Promise.all([
-      convIds.length ? db(`social_conversations?id=in.(${convIds.map(q).join(",")})&select=id,title,group_kind`) : Promise.resolve([]),
-      chIds.length ? db(`social_channels?id=in.(${chIds.map(q).join(",")})&select=id,name`) : Promise.resolve([]),
-      profilesByKeys(rows.map((r) => String(r.sender_id))),
-    ]);
-    return { messages: rows, conversations, channels, profiles };
+    return await inboxSince(userId, sinceOf(payload), await unmutedConversations(userId));
+  },
+
+  // Caixa de entrada em tempo real (long polling): segura a chamada até chegar mensagem
+  // nova de outra pessoa numa conversa não silenciada, ou até POLL_WAIT_MS. O app de
+  // computador (na bandeja) e o celular com o app aberto chamam em sequência, então a
+  // notificação aparece em ~1 s. O conteúdo continua cifrado: quem decifra é o aparelho.
+  async inbox({ userId, payload }) {
+    const since = sinceOf(payload);
+    const ids = await unmutedConversations(userId);
+    const deadline = Date.now() + (payload.wait === false ? 0 : POLL_WAIT_MS);
+    while (true) {
+      const fresh = ids.length
+        ? await db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=id&limit=1`) as Row[]
+        : [];
+      if (fresh.length || Date.now() >= deadline) return { ...(await inboxSince(userId, since, ids)), live: true };
+      await sleep(POLL_STEP_MS);
+    }
   },
 
   // --- perfil
@@ -946,6 +1012,8 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
       db("social_reads?on_conflict=channel_id,user_key", "POST", { channel_id: ch.id, user_key: userId, last_read_at: new Date().toISOString() },
         "resolution=merge-duplicates,return=minimal"),
     ]);
+    // avisa os celulares dos outros membros sem atrasar a resposta de quem enviou
+    emSegundoPlano(avisarMembros(conversationId, String(ch.id), userId));
     return payload.channelId ? { message: { ...rows[0], reactions: [] } } : { ok: true };
   },
 

@@ -3,6 +3,9 @@ import 'package:material_ui/material_ui.dart';
 import '../armazenamento.dart';
 import '../atualizacao.dart';
 import '../calendario.dart';
+import '../desktop/iniciar_com_sistema.dart';
+import '../desktop/janela.dart';
+import '../plataforma.dart';
 import '../compromissos.dart';
 import '../config.dart';
 import '../estado_app.dart';
@@ -265,7 +268,7 @@ class _AjustesAbaState extends State<AjustesAba> {
       ListTile(
         leading: const Icon(Icons.logout),
         title: const Text('Sair'),
-        subtitle: const Text('Apaga a chave de acesso deste celular'),
+        subtitle: Text('Apaga a chave de acesso deste ${Plataforma.desktop ? 'computador' : 'celular'}'),
         onTap: () async {
           final ok = await showDialog<bool>(
             context: context,
@@ -339,12 +342,13 @@ class _AjustesAbaState extends State<AjustesAba> {
           if (ok == true) await app.sincronizar(todasMaterias: true);
         },
       ),
-      SwitchListTile(
-        secondary: const Icon(Icons.wifi),
-        title: const Text('Em segundo plano, só no Wi-Fi'),
-        value: Cfg.soWifi,
-        onChanged: (v) => _mudar(() => Cfg.setSoWifi(v), reagendar: true),
-      ),
+      if (Plataforma.celular)
+        SwitchListTile(
+          secondary: const Icon(Icons.wifi),
+          title: const Text('Em segundo plano, só no Wi-Fi'),
+          value: Cfg.soWifi,
+          onChanged: (v) => _mudar(() => Cfg.setSoWifi(v), reagendar: true),
+        ),
       SwitchListTile(
         secondary: const Icon(Icons.notifications_active_outlined),
         title: const Text('Notificar novidades'),
@@ -365,8 +369,29 @@ class _AjustesAbaState extends State<AjustesAba> {
           await _reagendarLembretes();
         }),
       ),
-      secao('Agenda do celular (Google Agenda)'),
-      SwitchListTile(
+      if (Plataforma.desktop) ...[
+        secao('Computador'),
+        SwitchListTile(
+          secondary: const Icon(Icons.minimize_rounded),
+          title: const Text('Ao fechar, continuar na bandeja'),
+          subtitle: const Text('O app segue sincronizando e avisando de prazos e mensagens. '
+              'Para fechar de vez, use "Sair" no ícone perto do relógio.'),
+          value: Cfg.fecharParaBandeja,
+          onChanged: (v) => _mudar(() => Cfg.setFecharParaBandeja(v)),
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.power_settings_new_rounded),
+          title: const Text('Abrir junto com o sistema'),
+          subtitle: const Text('Começa escondido na bandeja quando você entra no computador'),
+          value: Cfg.iniciarComSistema,
+          onChanged: (v) => _mudar(() async {
+            await Cfg.setIniciarComSistema(v);
+            await IniciarComSistema.aplicar(v, nome: JanelaDesktop.nomeApp, argumentos: const [JanelaDesktop.argOculto]);
+          }),
+        ),
+      ],
+      if (Plataforma.temAgenda) secao('Agenda do celular (Google Agenda)'),
+      if (Plataforma.temAgenda) SwitchListTile(
         secondary: const Icon(Icons.calendar_month_outlined),
         title: const Text('Colocar prazos e provas na agenda'),
         subtitle: const Text('Cria e atualiza os eventos sozinho a cada sincronização. '
@@ -374,7 +399,7 @@ class _AjustesAbaState extends State<AjustesAba> {
         value: Cfg.calendario,
         onChanged: _ligarAgenda,
       ),
-      if (Cfg.calendario) ...[
+      if (Cfg.calendario && Plataforma.temAgenda) ...[
         ListTile(
           leading: const Icon(Icons.event_note_outlined),
           title: const Text('Agenda'),

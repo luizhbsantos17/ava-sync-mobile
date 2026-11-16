@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../estado_app.dart';
@@ -12,6 +13,7 @@ import 'curso.dart';
 import 'tarefa.dart';
 import '../classificar.dart';
 import '../config.dart';
+import '../plataforma.dart';
 import 'social.dart';
 
 class InicioTela extends StatefulWidget {
@@ -22,7 +24,19 @@ class InicioTela extends StatefulWidget {
 
 class _InicioTelaState extends State<InicioTela> {
   int _aba = 0;
-  static const _titulos = ['Prazos', 'Matérias', 'Acadêmico', 'Novidades', 'Perfil'];
+  static const _titulos = ['Prazos', 'Matérias', 'Acadêmico', 'Novidades', 'Perfil', 'Social'];
+
+  /// Largura a partir da qual a tela vira "de computador": menu lateral no lugar das
+  /// abas de baixo e o Social como uma seção da janela.
+  static const larguraLarga = 900.0;
+
+  static const _destinos = [
+    (Icons.event_note_outlined, Icons.event_note, 'Prazos'),
+    (Icons.menu_book_outlined, Icons.menu_book, 'Matérias'),
+    (Icons.insights_outlined, Icons.insights, 'Acadêmico'),
+    (Icons.notifications_none, Icons.notifications, 'Novidades'),
+    (Icons.person_outline, Icons.person, 'Perfil'),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +44,15 @@ class _InicioTelaState extends State<InicioTela> {
       listenable: app,
       builder: (context, _) {
         final ult = app.snap['gerado_em'];
-        return Scaffold(
-          appBar: AppBar(
+        final largo = MediaQuery.sizeOf(context).width >= larguraLarga;
+        if (!largo && _aba == 5) _aba = 0;
+        final barra = AppBar(
+            automaticallyImplyLeading: false,
             title: Row(children: [
-              GestureDetector(onTap: () => setState(() => _aba = 4), child: const Avatar(tamanho: 38)),
-              const SizedBox(width: 11),
+              if (!largo) ...[
+                GestureDetector(onTap: () => setState(() => _aba = 4), child: const Avatar(tamanho: 38)),
+                const SizedBox(width: 11),
+              ],
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(_titulos[_aba], style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
@@ -51,11 +69,12 @@ class _InicioTelaState extends State<InicioTela> {
               ),
             ]),
             actions: [
-              IconButton(
-                tooltip: 'Abrir espaço Social',
-                icon: const Icon(Icons.forum_outlined),
-                onPressed: () => Navigator.of(context).push(SocialTela.rota()),
-              ),
+              if (!largo)
+                IconButton(
+                  tooltip: 'Abrir espaço Social',
+                  icon: const Icon(Icons.forum_outlined),
+                  onPressed: () => Navigator.of(context).push(SocialTela.rota()),
+                ),
               IconButton(
                 tooltip: 'Buscar',
                 icon: const Icon(Icons.search),
@@ -65,7 +84,8 @@ class _InicioTelaState extends State<InicioTela> {
                   ? const Padding(
                       padding: EdgeInsets.all(14),
                       child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-                  : IconButton(tooltip: 'Sincronizar agora', icon: const Icon(Icons.sync), onPressed: app.sincronizar),
+                  : IconButton(tooltip: 'Sincronizar agora (F5)', icon: const Icon(Icons.sync), onPressed: app.sincronizar),
+              if (largo) const SizedBox(width: 8),
             ],
             bottom: app.erro == null
                 ? null
@@ -78,44 +98,90 @@ class _InicioTelaState extends State<InicioTela> {
                       child: Text(app.erro!, maxLines: 2, overflow: TextOverflow.ellipsis),
                     ),
                   ),
-          ),
-          // Sem "const": as abas leem o estado do app (materias, "Semestre atual/Todas",
-          // dados da sincronizacao). Um widget const nunca e reconstruido, entao a troca so
-          // aparecia depois de sair e voltar para a aba.
-          body: Stack(fit: StackFit.expand, children: [
-            Positioned.fill(
-              child: switch (_aba) {
-                0 => PrazosAba(
-                    abrirMaterias: () => setState(() => _aba = 1),
-                    abrirSemana: () {
-                      segmentoAcademico.value = 2;
-                      setState(() => _aba = 2);
-                    }),
-                1 => MateriasAba(),
-                2 => DesempenhoAba(),
-                3 => NovidadesAba(),
-                _ => PerfilAba(),
-              },
+        );
+        // Sem "const": as abas leem o estado do app (materias, "Semestre atual/Todas",
+        // dados da sincronizacao). Um widget const nunca e reconstruido, entao a troca so
+        // aparecia depois de sair e voltar para a aba.
+        final aba = switch (_aba) {
+          0 => PrazosAba(
+              abrirMaterias: () => setState(() => _aba = 1),
+              abrirSemana: () {
+                segmentoAcademico.value = 2;
+                setState(() => _aba = 2);
+              }),
+          1 => MateriasAba(),
+          2 => DesempenhoAba(),
+          3 => NovidadesAba(),
+          _ => PerfilAba(),
+        };
+        final corpo = Stack(fit: StackFit.expand, children: [
+          // no computador o conteudo fica numa coluna central, legivel
+          Positioned.fill(
+              child: largo
+                  ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1000), child: aba))
+                  : aba),
+          const ColetorOculto(), // Q-Academico junto com a sincronizacao
+        ]);
+        final atalhos = <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.f5): app.sincronizar,
+          const SingleActivator(LogicalKeyboardKey.keyR, control: true): app.sincronizar,
+        };
+        if (!largo) {
+          return CallbackShortcuts(
+            bindings: atalhos,
+            child: Scaffold(
+              appBar: barra,
+              body: corpo,
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: _aba,
+                onDestinationSelected: (i) => setState(() => _aba = i),
+                destinations: [
+                  for (final d in _destinos) NavigationDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: d.$3),
+                ],
+              ),
             ),
-            const ColetorOculto(), // Q-Academico junto com a sincronizacao
-          ]),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _aba,
-            onDestinationSelected: (i) => setState(() => _aba = i),
-            destinations: const [
-              NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Prazos'),
-              NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book), label: 'Matérias'),
-              NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Acadêmico'),
-              NavigationDestination(
-                  icon: Icon(Icons.notifications_none), selectedIcon: Icon(Icons.notifications), label: 'Novidades'),
-              NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Perfil'),
-            ],
+          );
+        }
+        final extendido = MediaQuery.sizeOf(context).width >= 1200;
+        return CallbackShortcuts(
+          bindings: atalhos,
+          child: Focus(
+            autofocus: true,
+            child: Scaffold(
+              body: Row(children: [
+                NavigationRail(
+                  extended: extendido,
+                  minExtendedWidth: 210,
+                  selectedIndex: _aba,
+                  onDestinationSelected: (i) => setState(() => _aba = i),
+                  labelType: extendido ? NavigationRailLabelType.none : NavigationRailLabelType.all,
+                  leading: Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 16),
+                    child: GestureDetector(onTap: () => setState(() => _aba = 4), child: const Avatar(tamanho: 44)),
+                  ),
+                  destinations: [
+                    for (final d in _destinos)
+                      NavigationRailDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: Text(d.$3)),
+                    const NavigationRailDestination(
+                        icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: Text('Social')),
+                  ],
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  // o Social tem a propria navegacao (grupos, canais, conversa)
+                  child: _aba == 5 ? const SocialTela() : Scaffold(appBar: barra, body: corpo),
+                ),
+              ]),
+            ),
           ),
         );
       },
     );
   }
 }
+
+String get dicaSincronizar =>
+    Plataforma.desktop ? 'Clique em Sincronizar (ou F5) para buscar seus dados.' : 'Puxe para baixo para sincronizar.';
 
 Widget _atualizavel(Widget filho) => RefreshIndicator(onRefresh: app.sincronizar, child: filho);
 
@@ -234,7 +300,7 @@ class PrazosAba extends StatelessWidget {
       return _atualizavel(ListView(children: [
         resumo,
         Vazio(Icons.celebration_outlined,
-            app.snap.isEmpty ? 'Puxe para baixo para sincronizar.' : 'Nenhum prazo pela frente.'),
+            app.snap.isEmpty ? dicaSincronizar : 'Nenhum prazo pela frente.'),
       ]));
     }
     final grupos = <String, List<Map<String, dynamic>>>{};
@@ -326,7 +392,8 @@ class MateriasAba extends StatelessWidget {
       return _atualizavel(ListView(children: [
         cab,
         const SizedBox(height: 100),
-        const Vazio(Icons.menu_book, 'Nenhuma matéria aqui. Puxe para sincronizar ou veja "Todas".'),
+        Vazio(Icons.menu_book,
+            'Nenhuma matéria aqui. ${Plataforma.desktop ? 'Clique em Sincronizar' : 'Puxe para sincronizar'} ou veja "Todas".'),
       ]));
     }
     return _atualizavel(ListView(
@@ -337,7 +404,7 @@ class MateriasAba extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
           child: Text(
               '${!Cfg.verTodas && escondidas > 0 ? '$escondidas matéria(s) de semestres anteriores escondida(s). ' : ''}'
-              'Toque e segure numa matéria para corrigir o semestre.',
+              '${Plataforma.desktop ? 'Clique com o botão direito' : 'Toque e segure'} numa matéria para corrigir o semestre.',
               style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
         ),
         for (final c in cursos)
@@ -350,13 +417,17 @@ class MateriasAba extends StatelessWidget {
             final atual = app.ehAtual(c);
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: ListTile(
+              // clique direito no computador = segurar no celular
+              child: GestureDetector(
+                onSecondaryTap: () => _menu(context, c),
+                child: ListTile(
                 leading: CircleAvatar(child: Text('${c['nome']}'.trim().isEmpty ? '?' : '${c['nome']}'.trim()[0])),
                 title: Text('${c['nome']}'),
                 subtitle: Text('${atual ? '' : 'semestre anterior · '}$pend tarefa(s) pendente(s) · $provas prova(s) pela frente'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CursoTela(cursoId: c['id']))),
                 onLongPress: () => _menu(context, c),
+              ),
               ),
             );
           }),
