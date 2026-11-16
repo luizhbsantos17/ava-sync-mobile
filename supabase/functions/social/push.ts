@@ -22,7 +22,7 @@ function lerConta(): Conta | null {
   } catch (_) {
     conta = null;
   }
-  return conta;
+  return conta ?? null;
 }
 
 export function pushConfigurado() {

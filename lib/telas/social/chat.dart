@@ -50,11 +50,13 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
   Set<String>? _vistasNaAbertura;
   String? _destaque;
   List<SocialMember> _sugestoes = const [];
+  List<SocialRole> _sugestoesCargo = const [];
 
   SocialConversation get conversa => social.conversation(widget.conversa.id) ?? widget.conversa;
   String get _me => social.me?.userKey ?? '';
-  bool get _admin => (_info?.myRole ?? conversa.role).gerencia;
-  bool get _podeEscrever => !widget.canal.onlyAdmins || _admin;
+  /// Permissão neste grupo: pelo cargo (dono/admin têm todas) ou pelos cargos personalizados.
+  bool _pode(Permissao p) => _info?.pode(p) ?? conversa.pode(p);
+  bool get _podeEscrever => !widget.canal.onlyAdmins || _pode(Permissao.enviarAvisos);
 
   @override
   void initState() {
@@ -128,11 +130,25 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
   }
 
   Map<String, String> get _usernames => {
+        for (final r in _cargosMarcaveis) apelidoCargo(r.name): 'role:${r.id}',
         for (final m in _info?.members ?? const <SocialMember>[])
           if (m.profile.username.isNotEmpty) m.profile.username.toLowerCase(): m.userKey,
       };
 
+  List<SocialRole> get _cargosMarcaveis {
+    final i = _info;
+    if (i == null || conversa.direta) return const [];
+    final todos = i.pode(Permissao.mencionarTodos);
+    return [for (final r in i.roles) if (r.mentionable || todos) r];
+  }
+
   ({String nome, bool eu})? _resolver(String username) {
+    final i = _info;
+    if (i != null) {
+      for (final r in i.roles) {
+        if (apelidoCargo(r.name) == username) return (nome: r.name, eu: i.member(_me)?.roleIds.contains(r.id) ?? false);
+      }
+    }
     for (final m in _info?.members ?? const <SocialMember>[]) {
       if (m.profile.username.toLowerCase() == username) return (nome: m.nome, eu: m.userKey == _me);
     }
@@ -153,28 +169,34 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
     final antes = sel >= 0 && sel <= t.length ? t.substring(0, sel) : t;
     final m = RegExp(r'(^|\s)@([a-zA-Z0-9_.]{0,24})$').firstMatch(antes);
     List<SocialMember> sug = const [];
+    List<SocialRole> sugCargo = const [];
     if (m != null && _info != null) {
       final q = m.group(2)!.toLowerCase();
       sug = _info!.members
           .where((x) => x.userKey != _me && (x.profile.username.contains(q) || x.nome.toLowerCase().contains(q)))
           .take(6)
           .toList();
+      sugCargo = _cargosMarcaveis.where((r) => apelidoCargo(r.name).contains(q) || r.name.toLowerCase().contains(q)).take(4).toList();
     }
-    if (sug.length != _sugestoes.length || (sug.isNotEmpty && sug.first.userKey != _sugestoes.firstOrNull?.userKey)) {
-      setState(() => _sugestoes = sug);
-    } else {
-      setState(() {});
-    }
+    setState(() {
+      _sugestoes = sug;
+      _sugestoesCargo = sugCargo;
+    });
   }
 
-  void _inserirMencao(SocialMember m) {
+  void _inserirMencao(SocialMember m) => _inserirApelido(m.profile.username);
+
+  void _inserirApelido(String apelido) {
     final t = _texto.text;
     final sel = _texto.selection.baseOffset.clamp(0, t.length);
     final antes = t.substring(0, sel);
     final depois = t.substring(sel);
-    final novo = antes.replaceFirst(RegExp(r'@[a-zA-Z0-9_.]*$'), '@${m.profile.username} ');
+    final novo = antes.replaceFirst(RegExp(r'@[a-zA-Z0-9_.]*$'), '@$apelido ');
     _texto.value = TextEditingValue(text: novo + depois, selection: TextSelection.collapsed(offset: novo.length));
-    setState(() => _sugestoes = const []);
+    setState(() {
+      _sugestoes = const [];
+      _sugestoesCargo = const [];
+    });
   }
 
   Future<void> _enviar() async {
@@ -207,6 +229,7 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
       _respondendo = null;
       _anexos.clear();
       _sugestoes = const [];
+      _sugestoesCargo = const [];
     });
     _texto.clear();
     unawaited(social.saveDraft(widget.canal.id, ''));
@@ -266,8 +289,8 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
     }
     HapticFeedback.mediumImpact();
     final mine = m.senderId == _me;
-    final podeApagar = mine || (_admin && !conversa.direta);
-    final podeFixar = conversa.direta || _admin;
+    final podeApagar = mine || (_pode(Permissao.apagarMensagens) && !conversa.direta);
+    final podeFixar = conversa.direta || _pode(Permissao.fixar);
     final op = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -637,12 +660,21 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
       child: SafeArea(
         top: false,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (_sugestoes.isNotEmpty)
+          if (_sugestoes.isNotEmpty || _sugestoesCargo.isNotEmpty)
             Container(
-              constraints: const BoxConstraints(maxHeight: 220),
+              constraints: const BoxConstraints(maxHeight: 260),
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outlineVariant))),
               child: ListView(shrinkWrap: true, padding: EdgeInsets.zero, children: [
-                const SecaoTitulo('Membros'),
+                if (_sugestoesCargo.isNotEmpty) const SecaoTitulo('Cargos'),
+                for (final r in _sugestoesCargo)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(Icons.shield_rounded, color: r.color == null ? null : Color(r.color!)),
+                    title: Text(r.name),
+                    trailing: Text('@${apelidoCargo(r.name)}', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+                    onTap: () => _inserirApelido(apelidoCargo(r.name)),
+                  ),
+                if (_sugestoes.isNotEmpty) const SecaoTitulo('Membros'),
                 for (final m in _sugestoes)
                   ListTile(
                     dense: true,
@@ -795,8 +827,15 @@ class _MensagemState extends State<_Mensagem> {
     final membro = widget.info?.member(m.senderId);
     final nome = membro?.nome ?? autor.displayName;
     final cargo = membro?.role ?? Cargo.member;
-    final corNome = switch (cargo) { Cargo.owner => const Color(0xFFE0A526), Cargo.admin => const Color(0xFF7289DA), _ => cs.onSurface };
-    final mencionaMe = m.mentions.contains(widget.me) || (m.mentions.contains('everyone') && m.senderId != widget.me);
+    final corCargo = membro == null ? null : widget.info?.corDe(membro);
+    final corNome = switch (cargo) {
+      Cargo.owner => const Color(0xFFE0A526),
+      Cargo.admin => const Color(0xFF7289DA),
+      _ => corCargo == null ? cs.onSurface : Color(corCargo),
+    };
+    final meusCargos = widget.info?.member(widget.me)?.roleIds ?? const <String>{};
+    final mencionaMe = m.senderId != widget.me &&
+        (m.mentions.contains(widget.me) || m.mentions.contains('everyone') || meusCargos.any((r) => m.mentions.contains('role:$r')));
     final fundo = widget.destaque
         ? cs.primary.withValues(alpha: .15)
         : mencionaMe
@@ -1422,4 +1461,18 @@ class _CartaoMensagem extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// "@" de um cargo: o nome em minúsculas, sem acento e com _ no lugar de espaço
+/// ("Monitor de Cálculo" vira @monitor_de_calculo).
+String apelidoCargo(String nome) {
+  const de = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
+  const para = 'aaaaaeeeeiiiiooooouuuucn';
+  final b = StringBuffer();
+  for (final ch in nome.toLowerCase().split('')) {
+    final i = de.indexOf(ch);
+    b.write(i >= 0 ? para[i] : ch);
+  }
+  final t = b.toString().replaceAll(RegExp(r'[^a-z0-9_.]+'), '_').replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_|_$'), '');
+  return t.isEmpty ? 'cargo' : (t.length > 24 ? t.substring(0, 24) : t);
 }

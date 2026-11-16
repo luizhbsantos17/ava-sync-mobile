@@ -11,7 +11,11 @@ Se uma regra mudar, mude aqui, não nos atalhos.
 1. Leia este arquivo inteiro.
 2. Leia `docs/contexto/ESTADO_ATUAL.md` (o que está pronto, em andamento e quebrado).
 3. Leia a skill da tarefa em `.agents/skills/` (tabela abaixo). Na dúvida: `nova-mudanca`.
-4. `git fetch` e trabalhe numa branch nova a partir de `origin/main`.
+4. **Reserve a tarefa** (skill `reservar-tarefa`): confira se ninguém pegou, atribua-se
+   à issue com a etiqueta `em andamento` e comente a branch. Sem GitHub: anote em
+   "Em andamento" no `ESTADO_ATUAL.md`.
+5. `git fetch` e trabalhe numa branch nova a partir de `origin/main`; abra cedo um pull
+   request em rascunho com `Resolve #N`.
 
 **Ao terminar (antes do commit final):**
 1. `flutter analyze` sem avisos e `flutter test` passando.
@@ -35,6 +39,7 @@ Se uma regra mudar, mude aqui, não nos atalhos.
 
 | Skill | Quando usar |
 |---|---|
+| `reservar-tarefa` | antes de começar qualquer tarefa ou issue (e ao desistir) |
 | `nova-mudanca` | qualquer mudança de código (fluxo completo) |
 | `corrigir-bug` | algo não funciona |
 | `git-e-push` | branch, commit, push, pull request |
@@ -189,6 +194,8 @@ Detalhe passo a passo na skill `nova-mudanca`. Resumo:
 ## Trabalho com vários agentes ao mesmo tempo
 
 - Uma branch por tarefa; não edite a branch de outra pessoa/agente.
+- Issue com alguém atribuído ou com a etiqueta `em andamento` já tem dono: não pegue.
+  Reserva parada há mais de 7 dias pode ser assumida depois de comentar na issue.
 - Antes de começar, rode `git fetch` e confira se a `main` mudou.
 - Conflitos no `CHANGELOG.md` são normais: mantenha as duas entradas.
 - Decisões de produto que não estão aqui ou em `docs/`: pergunte ao dono, não invente.

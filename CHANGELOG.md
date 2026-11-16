@@ -20,6 +20,8 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+
+## [1.0.0] - 2026-11-16
 ### Adicionado
 - **AVA Sync para computador** (Windows, Linux e macOS): prazos, matérias, notas e o
   Social, com a mesma conta do AVA. Baixe na página de versões do GitHub.
@@ -34,11 +36,20 @@ essa seção quando a versão atual ainda não tem uma.
 - **Atalhos**: F5 ou Ctrl+R sincronizam; clique com o botão direito abre os mesmos menus
   de segurar o dedo no celular.
 - No Windows, a **atualização é automática**: o app baixa, instala e abre de novo sozinho.
+- **Cargos personalizados nos grupos**: nome, cor, hierarquia e permissões (editar o grupo,
+  gerenciar canais e cargos, remover, banir, apagar mensagens, fixar, marcar @todos,
+  escrever em avisos). Uma pessoa pode ter vários cargos, e o nome aparece na cor do cargo.
+- **@cargo**: marque todo mundo de um cargo (ex.: @monitor) quando ele for marcável.
+- **Categorias de canais** (ex.: "Canais gerais", "Estudo"), que dá para recolher.
+- **Fundo com foto** no perfil e no grupo, e **cor do grupo**.
+- **Mais notificações do Social**: pedido de amizade, amizade aceita, entrar, ser removido
+  ou banido de um grupo e ganhar cargo.
 ### Alterado
 - **Notificações do Social mostram cada mensagem**: uma notificação por grupo/canal ou
   conversa, com quem mandou e o texto. Várias mensagens seguidas se juntam na mesma
   notificação (como no WhatsApp) e ela some quando você abre a conversa.
 ### Corrigido
+- **Trocar a cor do fundo do perfil** dava erro.
 - **Faltas no Acadêmico**: limites corrigidos de 7, 15 e 22 para 9, 18 e 27 nas disciplinas de 30, 60 e 90 horas, com ajuste das faltas e dias restantes.
 
 ## [0.8.0] - 2026-11-15

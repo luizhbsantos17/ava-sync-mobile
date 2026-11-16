@@ -1,3 +1,5 @@
+Resolve # <!-- número da issue; fecha a issue no merge. Reservou antes? (skill reservar-tarefa) -->
+
 ## O que muda
 
 <!-- Descreva para quem usa o app e, se precisar, o detalhe técnico. -->

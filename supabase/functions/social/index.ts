@@ -45,7 +45,7 @@ const ONLINE_WINDOW_MS = 100_000;
 const POLL_WAIT_MS = 20_000;
 const POLL_STEP_MS = 900;
 const MAX_CHANNELS = 30;
-const PROFILE_FIELDS = "user_key,username,display_name,bio,avatar_path,banner_color,status,custom_status,custom_emoji,public_key,last_seen,created_at";
+const PROFILE_FIELDS = "user_key,username,display_name,bio,avatar_path,banner_path,banner_color,status,custom_status,custom_emoji,public_key,last_seen,created_at";
 const MESSAGE_FIELDS = "id,conversation_id,channel_id,sender_id,ciphertext,nonce,mac,format,reply_to,mentions,edited_at,deleted_at,pinned_at,pinned_by,created_at,rev";
 const roleRank: Record<string, number> = { owner: 3, admin: 2, member: 1 };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -240,6 +240,7 @@ function shapeProfile(p: Row | null | undefined, self = false): Row | null {
     display_name: p.display_name,
     bio: p.bio ?? null,
     avatar_path: p.avatar_path ?? null,
+    banner_path: p.banner_path ?? null,
     banner_color: p.banner_color ?? null,
     custom_status: p.custom_status ?? null,
     custom_emoji: p.custom_emoji ?? null,
@@ -293,6 +294,41 @@ async function requireMember(conversationId: string, userId: string) {
   return m!;
 }
 
+// Permissões dos cargos personalizados. Dono e admin têm todas.
+const PERMISSOES = [
+  "gerenciar_grupo", "gerenciar_canais", "gerenciar_cargos", "expulsar", "banir",
+  "apagar_mensagens", "fixar", "mencionar_todos", "enviar_avisos",
+] as const;
+const RANK_DONO = 1_000_000;
+const RANK_ADMIN = 900_000;
+
+type Poder = { member: Row; rank: number; perms: Set<string> };
+
+/// Cargo efetivo: dono > admin > maior cargo personalizado (position). Permissões somadas.
+async function poder(conversationId: string, userId: string): Promise<Poder | null> {
+  const m = await getMember(conversationId, userId);
+  if (!m) return null;
+  if (m.role === "owner") return { member: m, rank: RANK_DONO, perms: new Set(PERMISSOES) };
+  if (m.role === "admin") return { member: m, rank: RANK_ADMIN, perms: new Set(PERMISSOES) };
+  const roles = await db(`social_member_roles?conversation_id=eq.${q(conversationId)}&user_key=eq.${q(userId)}&select=social_roles(position,permissions)`) as Row[];
+  let rank = 0;
+  const perms = new Set<string>();
+  for (const r of roles) {
+    const ro = r.social_roles as Row | null;
+    if (!ro) continue;
+    rank = Math.max(rank, Number(ro.position) || 0);
+    for (const x of (ro.permissions as string[] ?? [])) perms.add(x);
+  }
+  return { member: m, rank, perms };
+}
+
+async function requirePerm(conversationId: string, userId: string, perm: string) {
+  const p = await poder(conversationId, userId);
+  if (!p) fail("Você não participa deste grupo.", 403);
+  if (!p!.perms.has(perm)) fail("Você não tem permissão para fazer isso neste grupo.", 403);
+  return p!;
+}
+
 async function requireRole(conversationId: string, userId: string, min: "admin" | "owner") {
   const m = await requireMember(conversationId, userId);
   if ((roleRank[String(m.role)] ?? 0) < roleRank[min]) fail(min === "owner" ? "Só o dono do grupo pode fazer isso." : "Só administradores podem fazer isso.", 403);
@@ -343,7 +379,7 @@ function shapeMessages(rows: Row[]) {
   return rows.map((r) => {
     const reactions = Array.isArray(r.social_reactions) ? r.social_reactions as Row[] : [];
     const { social_reactions: _ignored, ...rest } = r;
-    return { ...rest, reactions: reactions.map((x) => ({ emoji: x.emoji, user_key: x.user_key })) };
+    return { ...rest, reactions: reactions.map((x) => ({ emoji: x.emoji, user_key: x.user_key })) } as Row;
   });
 }
 
@@ -389,8 +425,13 @@ async function unmutedConversations(userId: string) {
 
 /// Mensagens novas (de outras pessoas) depois de `since`, com títulos, canais e perfis
 /// para montar a notificação no aparelho.
+async function eventosDesde(userId: string, since: string) {
+  return await db(`social_events?user_key=eq.${q(userId)}&created_at=gt.${q(since)}&select=id,kind,data,created_at&order=created_at.desc&limit=30`) as Row[];
+}
+
 async function inboxSince(userId: string, since: string, ids: string[]) {
-  if (!ids.length) return { messages: [], conversations: [], channels: [], profiles: {} };
+  const events = await eventosDesde(userId, since);
+  if (!ids.length) return { messages: [], conversations: [], channels: [], profiles: {}, events };
   const rows = await db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=${MESSAGE_FIELDS}&order=created_at.desc&limit=30`) as Row[];
   const convIds = [...new Set(rows.map((r) => String(r.conversation_id)))];
   const chIds = [...new Set(rows.map((r) => String(r.channel_id)))];
@@ -399,7 +440,7 @@ async function inboxSince(userId: string, since: string, ids: string[]) {
     chIds.length ? db(`social_channels?id=in.(${chIds.map(q).join(",")})&select=id,name`) : Promise.resolve([]),
     profilesByKeys(rows.map((r) => String(r.sender_id))),
   ]);
-  return { messages: rows, conversations, channels, profiles };
+  return { messages: rows, conversations, channels, profiles, events };
 }
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
@@ -408,6 +449,65 @@ declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 function emSegundoPlano(p: Promise<unknown>) {
   const segura = p.catch((e) => console.error("segundo plano:", e));
   if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(segura);
+}
+
+async function getCategoria(id: string) {
+  const rows = await db(`social_categories?id=eq.${q(id)}&select=*`) as Row[];
+  if (!rows[0]) fail("Categoria não encontrada.");
+  return rows[0];
+}
+
+/// Categoria só vale se for do mesmo grupo; null tira o canal da categoria.
+async function categoriaDoGrupo(conversationId: string, value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const cat = await getCategoria(uuid(value, "Categoria"));
+  if (String(cat.conversation_id) !== conversationId) fail("Categoria de outro grupo.");
+  return cat.id;
+}
+
+async function getCargo(id: string) {
+  const rows = await db(`social_roles?id=eq.${q(id)}&select=*`) as Row[];
+  if (!rows[0]) fail("Cargo não encontrado.");
+  return rows[0];
+}
+
+/// Campos editáveis de um cargo. Ninguém dá a um cargo permissão que não tem.
+function camposCargo(payload: Row, eu: Poder, novo: boolean): Row {
+  const out: Row = {};
+  if (novo || payload.name !== undefined) {
+    const name = str(payload.name, 32);
+    if (!name) fail("Dê um nome ao cargo.");
+    out.name = name;
+  }
+  if (payload.color !== undefined) {
+    const c = Number(payload.color);
+    out.color = payload.color !== null && Number.isSafeInteger(c) && c >= 0 && c <= 0xFFFFFFFF ? c : null;
+  }
+  if (Array.isArray(payload.permissions)) {
+    const perms = [...new Set((payload.permissions as unknown[]).map(String))].filter((p) => (PERMISSOES as readonly string[]).includes(p));
+    for (const p of perms) if (!eu.perms.has(p)) fail("Você não pode dar uma permissão que não tem.");
+    out.permissions = perms;
+  }
+  if (typeof payload.mentionable === "boolean") out.mentionable = payload.mentionable;
+  if (typeof payload.hoist === "boolean") out.hoist = payload.hoist;
+  return out;
+}
+
+/// Evento que vira notificação para uma pessoa (pedido de amizade, removido do grupo,
+/// cargo novo...). Fica guardado para a caixa de entrada e acorda o celular por push.
+async function evento(userKey: string, kind: string, data: Row) {
+  await db("social_events", "POST", { user_key: userKey, kind, data }, "return=minimal");
+  emSegundoPlano((async () => {
+    if (!pushConfigurado()) return;
+    const tokens = await db(`social_push_tokens?user_key=eq.${q(userKey)}&select=token`) as Row[];
+    const invalidos = await enviarPush(tokens.map((t) => String(t.token)), { tipo: "social", evento: kind });
+    if (invalidos.length) await db(`social_push_tokens?token=in.(${invalidos.map(q).join(",")})`, "DELETE", undefined, "return=minimal");
+  })());
+}
+
+async function nomeDe(userKey: string) {
+  const r = await db(`social_profiles?user_key=eq.${q(userKey)}&select=display_name`) as Row[];
+  return String(r[0]?.display_name ?? "Alguém");
 }
 
 /// Push para os aparelhos dos outros membros (não silenciados) da conversa.
@@ -487,10 +587,13 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     const ids = await unmutedConversations(userId);
     const deadline = Date.now() + (payload.wait === false ? 0 : POLL_WAIT_MS);
     while (true) {
-      const fresh = ids.length
-        ? await db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=id&limit=1`) as Row[]
-        : [];
-      if (fresh.length || Date.now() >= deadline) return { ...(await inboxSince(userId, since, ids)), live: true };
+      const [fresh, evs] = await Promise.all([
+        ids.length
+          ? db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=id&limit=1`) as Promise<Row[]>
+          : Promise.resolve([] as Row[]),
+        db(`social_events?user_key=eq.${q(userId)}&created_at=gt.${q(since)}&select=id&limit=1`) as Promise<Row[]>,
+      ]);
+      if (fresh.length || evs.length || Date.now() >= deadline) return { ...(await inboxSince(userId, since, ids)), live: true };
       await sleep(POLL_STEP_MS);
     }
   },
@@ -545,7 +648,18 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
       if (!["online", "busy", "away", "invisible"].includes(String(payload.status))) fail("Status inválido.");
       patch.status = payload.status;
     }
-    if (payload.bannerColor !== undefined) patch.banner_color = Number.isSafeInteger(payload.bannerColor) ? payload.bannerColor : null;
+    if (payload.bannerColor !== undefined) {
+      const c = Number(payload.bannerColor);
+      patch.banner_color = payload.bannerColor !== null && Number.isSafeInteger(c) && c >= 0 && c <= 0xFFFFFFFF ? c : null;
+    }
+    if (payload.bannerPath !== undefined) {
+      if (payload.bannerPath === null) patch.banner_path = null;
+      else {
+        const prefix = `banner/${await userHash(userId)}/`;
+        if (typeof payload.bannerPath !== "string" || !payload.bannerPath.startsWith(prefix)) fail("Imagem de fundo inválida.");
+        patch.banner_path = payload.bannerPath;
+      }
+    }
     if (payload.avatarPath !== undefined) {
       if (payload.avatarPath === null) patch.avatar_path = null;
       else {
@@ -602,11 +716,13 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
       if (existing.status === "accepted") return { status: "friends" };
       if (existing.requested_by !== userId) {
         await db(`social_friendships?user_a=eq.${q(a)}&user_b=eq.${q(b)}`, "PATCH", { status: "accepted", updated_at: new Date().toISOString() }, "return=minimal");
+        await evento(target, "amizade_aceita", { de: userId, nome: await nomeDe(userId) });
         return { status: "friends" };
       }
       return { status: "outgoing" };
     }
     await db("social_friendships", "POST", { user_a: a, user_b: b, requested_by: userId, status: "pending" }, "return=minimal");
+    await evento(target, "amizade_pedido", { de: userId, nome: await nomeDe(userId) });
     return { status: "outgoing" };
   },
 
@@ -617,6 +733,7 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     const [a, b] = pairOf(userId, target);
     if (payload.accept === true) {
       await db(`social_friendships?user_a=eq.${q(a)}&user_b=eq.${q(b)}`, "PATCH", { status: "accepted", updated_at: new Date().toISOString() }, "return=minimal");
+      await evento(target, "amizade_aceita", { de: userId, nome: await nomeDe(userId) });
       return { status: "friends" };
     }
     await db(`social_friendships?user_a=eq.${q(a)}&user_b=eq.${q(b)}`, "DELETE", undefined, "return=minimal");
@@ -691,14 +808,24 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
 
   async group_info({ userId, payload }) {
     const id = uuid(payload.conversationId, "Grupo");
-    const me = await requireMember(id, userId);
-    const [conv, channels, members, bans, invites] = await Promise.all([
+    const eu = await poder(id, userId);
+    if (!eu) fail("Você não participa deste grupo.", 403);
+    const me = eu!.member;
+    const [conv, channels, members, bans, invites, roles, memberRoles, categories] = await Promise.all([
       getConversation(id),
       db(`social_channels?conversation_id=eq.${q(id)}&select=*&order=position.asc,created_at.asc`),
       db(`social_members?conversation_id=eq.${q(id)}&select=user_key,role,nickname,joined_at`),
-      (roleRank[String(me.role)] ?? 0) >= 2 ? db(`social_bans?conversation_id=eq.${q(id)}&select=user_key,created_at`) : Promise.resolve([]),
+      eu!.perms.has("banir") ? db(`social_bans?conversation_id=eq.${q(id)}&select=user_key,created_at`) : Promise.resolve([]),
       db(`social_invites?conversation_id=eq.${q(id)}&select=invite_hash,expires_at,max_uses,uses,created_at`),
+      db(`social_roles?conversation_id=eq.${q(id)}&select=*&order=position.desc,created_at.asc`),
+      db(`social_member_roles?conversation_id=eq.${q(id)}&select=role_id,user_key`),
+      db(`social_categories?conversation_id=eq.${q(id)}&select=*&order=position.asc,created_at.asc`),
     ]);
+    const rolesDe = new Map<string, string[]>();
+    for (const r of memberRoles as Row[]) {
+      const k = String(r.user_key);
+      rolesDe.set(k, [...(rolesDe.get(k) ?? []), String(r.role_id)]);
+    }
     const profiles = await profilesByKeys([...(members as Row[]), ...(bans as Row[])].map((m) => String(m.user_key)));
     const { invite_hash: _hash, dm_key: _dm, ...publicConv } = conv;
     return {
@@ -707,7 +834,11 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
       muted: me.muted,
       nickname: me.nickname,
       channels,
-      members: (members as Row[]).map((m) => ({ ...m, profile: profiles[String(m.user_key)] })),
+      members: (members as Row[]).map((m) => ({ ...m, roles: rolesDe.get(String(m.user_key)) ?? [], profile: profiles[String(m.user_key)] })),
+      roles,
+      categories,
+      myRank: eu!.rank,
+      myPerms: [...eu!.perms],
       bans: (bans as Row[]).map((b) => ({ ...b, profile: profiles[String(b.user_key)] })),
       activeInvites: (invites as Row[]).filter((i) => (!i.expires_at || Date.parse(String(i.expires_at)) > Date.now()) && (!i.max_uses || Number(i.uses) < Number(i.max_uses))).length,
     };
@@ -715,7 +846,7 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
 
   async update_group({ userId, payload }) {
     const id = uuid(payload.conversationId, "Grupo");
-    await requireRole(id, userId, "admin");
+    await requirePerm(id, userId, "gerenciar_grupo");
     const conv = await getConversation(id);
     if (conv.group_kind === "dm") fail("Conversas diretas não têm configurações de grupo.");
     const patch: Row = { updated_at: new Date().toISOString() };
@@ -730,6 +861,15 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
       if (payload.iconPath === null) patch.icon_path = null;
       else if (typeof payload.iconPath === "string" && payload.iconPath.startsWith(`icon/${id}/`)) patch.icon_path = payload.iconPath;
       else fail("Imagem inválida.");
+    }
+    if (payload.bannerPath !== undefined) {
+      if (payload.bannerPath === null) patch.banner_path = null;
+      else if (typeof payload.bannerPath === "string" && payload.bannerPath.startsWith(`gbanner/${id}/`)) patch.banner_path = payload.bannerPath;
+      else fail("Imagem de fundo inválida.");
+    }
+    if (payload.accentColor !== undefined) {
+      const c = Number(payload.accentColor);
+      patch.accent_color = payload.accentColor !== null && Number.isSafeInteger(c) && c >= 0 && c <= 0xFFFFFFFF ? c : null;
     }
     await db(`social_conversations?id=eq.${q(id)}`, "PATCH", patch, "return=minimal");
     return { ok: true };
@@ -768,7 +908,7 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
 
   async revoke_invites({ userId, payload }) {
     const id = uuid(payload.conversationId, "Grupo");
-    await requireRole(id, userId, "admin");
+    await requirePerm(id, userId, "gerenciar_grupo");
     await db(`social_invites?conversation_id=eq.${q(id)}`, "DELETE", undefined, "return=minimal");
     await db(`social_conversations?id=eq.${q(id)}`, "PATCH", { invite_hash: null }, "return=minimal");
     return { ok: true };
@@ -813,30 +953,36 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
       if (f?.status !== "accepted") fail("Você só pode adicionar amigos. Administradores podem adicionar qualquer pessoa.");
     }
     if ((await blockedBetween(userId, target)).length) fail("Não é possível adicionar esta pessoa.");
+    const ja = await getMember(id, target);
     await db("social_members?on_conflict=conversation_id,user_key", "POST", { conversation_id: id, user_key: target, role: "member" },
       "resolution=ignore-duplicates,return=minimal");
+    if (!ja) await evento(target, "adicionado", { grupo: id, titulo: conv.title, por: await nomeDe(userId) });
     return { ok: true };
   },
 
   async kick({ userId, payload }) {
     const id = uuid(payload.conversationId, "Grupo");
-    const me = await requireRole(id, userId, "admin");
+    const ban = payload.ban === true;
+    const eu = await requirePerm(id, userId, ban ? "banir" : "expulsar");
     const target = str(payload.userKey, 120);
-    const them = await getMember(id, target);
-    if (!them) fail("Essa pessoa não está no grupo.");
-    if ((roleRank[String(them!.role)] ?? 0) >= (roleRank[String(me.role)] ?? 0)) fail("Você não pode remover alguém com cargo igual ou maior.");
+    const ele = await poder(id, target);
+    if (!ele) fail("Essa pessoa não está no grupo.");
+    if (ele!.rank >= eu.rank) fail("Você não pode remover alguém com cargo igual ou maior.");
+    const conv = await getConversation(id);
     await db(`social_members?conversation_id=eq.${q(id)}&user_key=eq.${q(target)}`, "DELETE", undefined, "return=minimal");
     await db(`social_key_envelopes?conversation_id=eq.${q(id)}&user_key=eq.${q(target)}`, "DELETE", undefined, "return=minimal");
-    if (payload.ban === true) {
+    await db(`social_member_roles?conversation_id=eq.${q(id)}&user_key=eq.${q(target)}`, "DELETE", undefined, "return=minimal");
+    if (ban) {
       await db("social_bans?on_conflict=conversation_id,user_key", "POST", { conversation_id: id, user_key: target, banned_by: userId },
         "resolution=ignore-duplicates,return=minimal");
     }
+    await evento(target, ban ? "banido" : "removido", { grupo: id, titulo: conv.title, por: await nomeDe(userId) });
     return { ok: true };
   },
 
   async unban({ userId, payload }) {
     const id = uuid(payload.conversationId, "Grupo");
-    await requireRole(id, userId, "admin");
+    await requirePerm(id, userId, "banir");
     await db(`social_bans?conversation_id=eq.${q(id)}&user_key=eq.${q(str(payload.userKey, 120))}`, "DELETE", undefined, "return=minimal");
     return { ok: true };
   },
@@ -850,6 +996,8 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     if (!["admin", "member"].includes(role)) fail("Cargo inválido.");
     if (!await getMember(id, target)) fail("Essa pessoa não está no grupo.");
     await db(`social_members?conversation_id=eq.${q(id)}&user_key=eq.${q(target)}`, "PATCH", { role }, "return=minimal");
+    const conv = await getConversation(id);
+    await evento(target, "cargo", { grupo: id, titulo: conv.title, cargo: role === "admin" ? "Admin" : "Membro", ganhou: role === "admin" });
     return { ok: true };
   },
 
@@ -860,6 +1008,8 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     if (!await getMember(id, target)) fail("Essa pessoa não está no grupo.");
     await db(`social_members?conversation_id=eq.${q(id)}&user_key=eq.${q(target)}`, "PATCH", { role: "owner" }, "return=minimal");
     await db(`social_members?conversation_id=eq.${q(id)}&user_key=eq.${q(userId)}`, "PATCH", { role: "admin" }, "return=minimal");
+    const conv = await getConversation(id);
+    await evento(target, "cargo", { grupo: id, titulo: conv.title, cargo: "Dono", ganhou: true });
     return { ok: true };
   },
 
@@ -879,7 +1029,7 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
   // --- canais
   async create_channel({ userId, payload }) {
     const id = uuid(payload.conversationId, "Grupo");
-    await requireRole(id, userId, "admin");
+    await requirePerm(id, userId, "gerenciar_canais");
     const conv = await getConversation(id);
     if (conv.group_kind === "dm") fail("Conversas diretas não têm canais.");
     const name = str(payload.name, 32).toLowerCase().replace(/\s+/g, "-");
@@ -888,14 +1038,16 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     if (existing.length >= MAX_CHANNELS) fail(`Um grupo pode ter no máximo ${MAX_CHANNELS} canais.`);
     const rows = await db("social_channels", "POST", {
       conversation_id: id, name, topic: optStr(payload.topic, 200) ?? null, position: existing.length, only_admins: payload.onlyAdmins === true,
+      category_id: await categoriaDoGrupo(id, payload.categoryId),
     }, "return=representation") as Row[];
     return rows[0];
   },
 
   async update_channel({ userId, payload }) {
     const ch = await getChannel(uuid(payload.channelId, "Canal"));
-    await requireRole(String(ch.conversation_id), userId, "admin");
+    await requirePerm(String(ch.conversation_id), userId, "gerenciar_canais");
     const patch: Row = {};
+    if (payload.categoryId !== undefined) patch.category_id = await categoriaDoGrupo(String(ch.conversation_id), payload.categoryId);
     if (payload.name !== undefined) {
       const name = str(payload.name, 32).toLowerCase().replace(/\s+/g, "-");
       if (!name) fail("Dê um nome ao canal.");
@@ -911,7 +1063,7 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
 
   async reorder_channels({ userId, payload }) {
     const id = uuid(payload.conversationId, "Grupo");
-    await requireRole(id, userId, "admin");
+    await requirePerm(id, userId, "gerenciar_canais");
     const order = Array.isArray(payload.channelIds) ? payload.channelIds.filter(isUuid) as string[] : [];
     for (let i = 0; i < order.length; i++) {
       await db(`social_channels?id=eq.${q(order[i])}&conversation_id=eq.${q(id)}`, "PATCH", { position: i }, "return=minimal");
@@ -921,10 +1073,127 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
 
   async delete_channel({ userId, payload }) {
     const ch = await getChannel(uuid(payload.channelId, "Canal"));
-    await requireRole(String(ch.conversation_id), userId, "admin");
+    await requirePerm(String(ch.conversation_id), userId, "gerenciar_canais");
     const all = await db(`social_channels?conversation_id=eq.${q(String(ch.conversation_id))}&select=id`) as Row[];
     if (all.length <= 1) fail("O grupo precisa ter pelo menos um canal.");
     await db(`social_channels?id=eq.${q(String(ch.id))}`, "DELETE", undefined, "return=minimal");
+    return { ok: true };
+  },
+
+  // --- categorias de canais (#2)
+  async create_category({ userId, payload }) {
+    const id = uuid(payload.conversationId, "Grupo");
+    await requirePerm(id, userId, "gerenciar_canais");
+    const name = str(payload.name, 32);
+    if (!name) fail("Dê um nome à categoria.");
+    const existing = await db(`social_categories?conversation_id=eq.${q(id)}&select=id`) as Row[];
+    if (existing.length >= 20) fail("Um grupo pode ter no máximo 20 categorias.");
+    const rows = await db("social_categories", "POST", { conversation_id: id, name, position: existing.length }, "return=representation") as Row[];
+    return rows[0];
+  },
+
+  async update_category({ userId, payload }) {
+    const cat = await getCategoria(uuid(payload.categoryId, "Categoria"));
+    await requirePerm(String(cat.conversation_id), userId, "gerenciar_canais");
+    const patch: Row = {};
+    if (payload.name !== undefined) {
+      const name = str(payload.name, 32);
+      if (!name) fail("Dê um nome à categoria.");
+      patch.name = name;
+    }
+    if (Number.isSafeInteger(payload.position)) patch.position = payload.position;
+    if (Object.keys(patch).length) await db(`social_categories?id=eq.${q(String(cat.id))}`, "PATCH", patch, "return=minimal");
+    return { ok: true };
+  },
+
+  async delete_category({ userId, payload }) {
+    const cat = await getCategoria(uuid(payload.categoryId, "Categoria"));
+    await requirePerm(String(cat.conversation_id), userId, "gerenciar_canais");
+    // os canais continuam, só ficam sem categoria
+    await db(`social_categories?id=eq.${q(String(cat.id))}`, "DELETE", undefined, "return=minimal");
+    return { ok: true };
+  },
+
+  // --- cargos personalizados (#2)
+  async create_role({ userId, payload }) {
+    const id = uuid(payload.conversationId, "Grupo");
+    const eu = await requirePerm(id, userId, "gerenciar_cargos");
+    const conv = await getConversation(id);
+    if (conv.group_kind === "dm") fail("Conversas diretas não têm cargos.");
+    const existing = await db(`social_roles?conversation_id=eq.${q(id)}&select=position`) as Row[];
+    if (existing.length >= 40) fail("Um grupo pode ter no máximo 40 cargos.");
+    // cargo novo nasce logo abaixo do seu (ou no topo, para dono/admin)
+    const topo = existing.reduce((m, r) => Math.max(m, Number(r.position) || 0), 0);
+    const position = Math.min(topo + 1, eu.rank - 1);
+    if (position < 1) fail("Você não pode criar cargos acima do seu.");
+    const rows = await db("social_roles", "POST", { conversation_id: id, ...camposCargo(payload, eu, true), position }, "return=representation") as Row[];
+    return rows[0];
+  },
+
+  async update_role({ userId, payload }) {
+    const role = await getCargo(uuid(payload.roleId, "Cargo"));
+    const id = String(role.conversation_id);
+    const eu = await requirePerm(id, userId, "gerenciar_cargos");
+    if (Number(role.position) >= eu.rank) fail("Você só pode editar cargos abaixo do seu.");
+    const patch = camposCargo(payload, eu, false);
+    if (Number.isSafeInteger(payload.position)) {
+      const pos = Number(payload.position);
+      if (pos < 1 || pos >= eu.rank) fail("Você só pode pôr o cargo abaixo do seu.");
+      patch.position = pos;
+    }
+    if (Object.keys(patch).length) await db(`social_roles?id=eq.${q(String(role.id))}`, "PATCH", patch, "return=minimal");
+    return { ok: true };
+  },
+
+  async reorder_roles({ userId, payload }) {
+    const id = uuid(payload.conversationId, "Grupo");
+    const eu = await requirePerm(id, userId, "gerenciar_cargos");
+    // lista do mais alto para o mais baixo; só mexe nos cargos abaixo do seu
+    const order = Array.isArray(payload.roleIds) ? (payload.roleIds as unknown[]).filter(isUuid) as string[] : [];
+    const roles = await db(`social_roles?conversation_id=eq.${q(id)}&select=id,position`) as Row[];
+    const meus = new Set(roles.filter((r) => Number(r.position) < eu.rank).map((r) => String(r.id)));
+    const lista = order.filter((r) => meus.has(r));
+    for (let i = 0; i < lista.length; i++) {
+      await db(`social_roles?id=eq.${q(lista[i])}&conversation_id=eq.${q(id)}`, "PATCH", { position: lista.length - i }, "return=minimal");
+    }
+    return { ok: true };
+  },
+
+  async delete_role({ userId, payload }) {
+    const role = await getCargo(uuid(payload.roleId, "Cargo"));
+    const eu = await requirePerm(String(role.conversation_id), userId, "gerenciar_cargos");
+    if (Number(role.position) >= eu.rank) fail("Você só pode apagar cargos abaixo do seu.");
+    await db(`social_roles?id=eq.${q(String(role.id))}`, "DELETE", undefined, "return=minimal");
+    return { ok: true };
+  },
+
+  /// Troca os cargos personalizados de alguém (pode ter vários).
+  async set_member_roles({ userId, payload }) {
+    const id = uuid(payload.conversationId, "Grupo");
+    const eu = await requirePerm(id, userId, "gerenciar_cargos");
+    const target = str(payload.userKey, 120);
+    const ele = await poder(id, target);
+    if (!ele) fail("Essa pessoa não está no grupo.");
+    if (target !== userId && ele!.rank >= eu.rank) fail("Você não pode mudar os cargos de alguém com cargo igual ou maior.");
+    const roles = await db(`social_roles?conversation_id=eq.${q(id)}&select=id,name,position`) as Row[];
+    const pedidos = new Set(Array.isArray(payload.roleIds) ? (payload.roleIds as unknown[]).map(String) : []);
+    const atuais = new Set((await db(`social_member_roles?conversation_id=eq.${q(id)}&user_key=eq.${q(target)}&select=role_id`) as Row[]).map((r) => String(r.role_id)));
+    const ganhou: string[] = [];
+    for (const r of roles) {
+      const rid = String(r.id);
+      if (pedidos.has(rid) === atuais.has(rid)) continue;
+      if (Number(r.position) >= eu.rank) fail(`Você não pode dar ou tirar o cargo ${r.name}.`);
+      if (pedidos.has(rid)) {
+        await db("social_member_roles", "POST", { role_id: rid, conversation_id: id, user_key: target }, "return=minimal");
+        ganhou.push(String(r.name));
+      } else {
+        await db(`social_member_roles?role_id=eq.${q(rid)}&user_key=eq.${q(target)}`, "DELETE", undefined, "return=minimal");
+      }
+    }
+    if (ganhou.length && target !== userId) {
+      const conv = await getConversation(id);
+      await evento(target, "cargo", { grupo: id, titulo: conv.title, cargo: ganhou.join(", "), ganhou: true });
+    }
     return { ok: true };
   },
 
@@ -988,9 +1257,9 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     if (payload.channelId) ch = await getChannel(uuid(payload.channelId, "Canal"));
     else ch = await defaultChannel(uuid(payload.conversationId, "Grupo"));
     const conversationId = String(ch.conversation_id);
-    const me = await requireMember(conversationId, userId);
-    const isAdmin = (roleRank[String(me.role)] ?? 0) >= 2;
-    if (ch.only_admins && !isAdmin) fail("Só administradores escrevem neste canal.", 403);
+    const eu = await poder(conversationId, userId);
+    if (!eu) fail("Você não participa deste grupo.", 403);
+    if (ch.only_admins && !eu!.perms.has("enviar_avisos")) fail("Só quem tem permissão escreve neste canal.", 403);
     const conv = await getConversation(conversationId);
     if (conv.group_kind === "dm") {
       const others = await db(`social_members?conversation_id=eq.${q(conversationId)}&user_key=neq.${q(userId)}&select=user_key`) as Row[];
@@ -1002,7 +1271,13 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     if (!ciphertext || ciphertext.length > 24000 || !nonce || !mac) fail("Mensagem inválida.");
     const format = Number(payload.format) === 2 ? 2 : 1;
     let mentions = Array.isArray(payload.mentions) ? (payload.mentions as unknown[]).map(String).slice(0, 30) : [];
-    if (!isAdmin && conv.group_kind !== "dm") mentions = mentions.filter((m) => m !== "everyone");
+    if (!eu!.perms.has("mencionar_todos") && conv.group_kind !== "dm") mentions = mentions.filter((m) => m !== "everyone");
+    // @cargo só vale para cargos marcáveis (ou para quem pode marcar todos)
+    const mencoesCargo = mentions.filter((m) => m.startsWith("role:"));
+    if (mencoesCargo.length && !eu!.perms.has("mencionar_todos")) {
+      const ok = new Set((await db(`social_roles?conversation_id=eq.${q(conversationId)}&mentionable=eq.true&select=id`) as Row[]).map((r) => `role:${r.id}`));
+      mentions = mentions.filter((m) => !m.startsWith("role:") || ok.has(m));
+    }
     const replyTo = isUuid(payload.replyTo) ? payload.replyTo : null;
     const rows = await db(`social_messages?select=${MESSAGE_FIELDS}`, "POST", {
       conversation_id: conversationId, channel_id: ch.id, sender_id: userId, ciphertext, nonce, mac, format, reply_to: replyTo, mentions,
@@ -1034,13 +1309,14 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
   async delete_message({ userId, payload }) {
     const m = await getMessage(uuid(payload.messageId, "Mensagem"));
     const conversationId = String(m.conversation_id);
-    const me = await requireMember(conversationId, userId);
+    const eu = await poder(conversationId, userId);
+    if (!eu) fail("Você não participa deste grupo.", 403);
     const conv = await getConversation(conversationId);
     const own = m.sender_id === userId;
     if (!own) {
-      if (conv.group_kind === "dm" || (roleRank[String(me.role)] ?? 0) < 2) fail("Você só pode apagar as suas mensagens.", 403);
-      const sender = await getMember(conversationId, String(m.sender_id));
-      if (sender && (roleRank[String(sender.role)] ?? 0) >= (roleRank[String(me.role)] ?? 0)) fail("Você não pode apagar mensagens de alguém com cargo igual ou maior.", 403);
+      if (conv.group_kind === "dm" || !eu!.perms.has("apagar_mensagens")) fail("Você só pode apagar as suas mensagens.", 403);
+      const sender = await poder(conversationId, String(m.sender_id));
+      if (sender && sender.rank >= eu!.rank) fail("Você não pode apagar mensagens de alguém com cargo igual ou maior.", 403);
     }
     await db(`social_reactions?message_id=eq.${q(String(m.id))}`, "DELETE", undefined, "return=minimal");
     await db(`social_messages?id=eq.${q(String(m.id))}`, "PATCH",
@@ -1072,9 +1348,10 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
 
   async pin({ userId, payload }) {
     const m = await getMessage(uuid(payload.messageId, "Mensagem"));
-    const me = await requireMember(String(m.conversation_id), userId);
+    const eu = await poder(String(m.conversation_id), userId);
+    if (!eu) fail("Você não participa deste grupo.", 403);
     const conv = await getConversation(String(m.conversation_id));
-    if (conv.group_kind !== "dm" && (roleRank[String(me.role)] ?? 0) < 2) fail("Só administradores fixam mensagens.", 403);
+    if (conv.group_kind !== "dm" && !eu!.perms.has("fixar")) fail("Você não tem permissão para fixar mensagens.", 403);
     if (m.deleted_at) fail("Essa mensagem foi apagada.");
     const on = payload.pinned !== false;
     await db(`social_messages?id=eq.${q(String(m.id))}`, "PATCH",
@@ -1103,11 +1380,12 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     let path: string;
     const name = crypto.randomUUID();
     if (kind === "avatar") path = `avatar/${await userHash(userId)}/${name}.png`;
+    else if (kind === "banner") path = `banner/${await userHash(userId)}/${name}.png`;
     else {
       const id = uuid(payload.conversationId, "Grupo");
-      if (kind === "icon") {
-        await requireRole(id, userId, "admin");
-        path = `icon/${id}/${name}.png`;
+      if (kind === "icon" || kind === "gbanner") {
+        await requirePerm(id, userId, "gerenciar_grupo");
+        path = `${kind}/${id}/${name}.png`;
       } else if (kind === "att") {
         await requireMember(id, userId);
         path = `att/${id}/${await userHash(userId)}/${name}.bin`;
@@ -1122,8 +1400,8 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     const ok: string[] = [];
     const memberCache = new Map<string, boolean>();
     for (const p of paths) {
-      if (p.length > 200 || p.includes("..") || !/^(avatar|att|icon)\/[A-Za-z0-9_\-./]+$/.test(p)) continue;
-      if (p.startsWith("avatar/")) {
+      if (p.length > 200 || p.includes("..") || !/^(avatar|banner|att|icon|gbanner)\/[A-Za-z0-9_\-./]+$/.test(p)) continue;
+      if (p.startsWith("avatar/") || p.startsWith("banner/")) {
         ok.push(p);
         continue;
       }

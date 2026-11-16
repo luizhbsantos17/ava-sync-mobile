@@ -107,3 +107,16 @@ Mensagem sem canal cai no primeiro canal da conversa (gatilho `social_message_de
   Sem conteúdo: o aparelho decifra e monta a notificação.
 - Segredo `FCM_SERVICE_ACCOUNT` (JSON da conta de serviço). Sem ele, nada é enviado.
   Configuração completa em `docs/FIREBASE_PUSH.md`.
+
+## Social v3 (cargos, categorias, personalização, eventos)
+- `social_roles` / `social_member_roles`: cargos com cor, `position`, `permissions[]`,
+  `mentionable`, `hoist`. Ações: `create_role`, `update_role`, `reorder_roles`,
+  `delete_role`, `set_member_roles`. Permissão conferida por `poder()` (dono > admin > cargo).
+- `social_categories` + `social_channels.category_id`: `create_category`,
+  `update_category`, `delete_category`; `create_channel`/`update_channel` aceitam `categoryId`.
+- Fundo: `social_profiles.banner_path` (`banner/<hash>/...`, público como o avatar) e
+  `social_conversations.banner_path` (`gbanner/<grupo>/...`, só membros) + `accent_color`.
+  `banner_color` virou `bigint` (cor 0xAARRGGBB estourava o `integer`, issue #5).
+- `social_events` (amizade_pedido, amizade_aceita, adicionado, removido, banido, cargo):
+  voltam em `inbox`/`notifications` como `events` e acordam o celular por push.
+

@@ -11,6 +11,17 @@ Formato:
 **Consequências:** ... (opcional)
 ```
 
+## 2026-11-16 — Cargos personalizados ao lado de dono/admin
+**Decisão:** dono e admin (`social_members.role`) continuam no topo e têm todas as
+permissões. Cargos personalizados (`social_roles`) têm `position` (maior = mais alto),
+cor, permissões em texto (`gerenciar_grupo`, `expulsar`...) e podem ser vários por pessoa
+(`social_member_roles`). Quem tem `gerenciar_cargos` só mexe em cargos abaixo do seu e
+não dá permissão que não tem; remover/banir/apagar seguem a mesma hierarquia.
+Menção a cargo é `role:<id>` em `mentions`; o app escreve `@apelido_do_cargo`.
+**Por quê:** issue #2 pede cargos como no Discord sem quebrar grupos e apps já existentes.
+**Consequências:** o servidor confere tudo em `poder()`/`requirePerm()`; o app só esconde
+botões. Eventos de amizade, grupo e cargo ficam em `social_events` e vão no `inbox`/push.
+
 ## 2026-11-16 — Push do Android pelo Firebase, só em código nativo
 **Decisão:** app fechado no Android recebe aviso pelo Firebase Cloud Messaging. O servidor
 manda só `{tipo, conversa, canal}`; o app acorda (`PushService.kt` sobe um Flutter sem tela

@@ -90,6 +90,24 @@ String corpoSimples(ConversaNotif n) {
   return linhas.join('\n');
 }
 
+/// Título e texto da notificação de um evento do Social (#1). Puro, testável.
+({String titulo, String corpo})? textoDoEvento(String kind, Map<String, dynamic> d) {
+  final nome = '${d['nome'] ?? 'Alguém'}';
+  final grupo = '${d['titulo'] ?? 'um grupo'}';
+  final por = d['por'] == null ? '' : ' por ${d['por']}';
+  return switch (kind) {
+    'amizade_pedido' => (titulo: 'Pedido de amizade', corpo: '$nome quer ser seu amigo no Social.'),
+    'amizade_aceita' => (titulo: 'Pedido aceito', corpo: '$nome aceitou seu pedido de amizade.'),
+    'adicionado' => (titulo: 'Você entrou em $grupo', corpo: 'Você foi adicionado ao grupo$por.'),
+    'removido' => (titulo: 'Você saiu de $grupo', corpo: 'Você foi removido do grupo$por.'),
+    'banido' => (titulo: 'Você foi banido de $grupo', corpo: 'Você foi removido e não pode voltar$por.'),
+    'cargo' => d['ganhou'] == false
+        ? (titulo: 'Cargo alterado em $grupo', corpo: 'Você não é mais ${d['cargo']}.')
+        : (titulo: 'Novo cargo em $grupo', corpo: 'Você agora é ${d['cargo']}.'),
+    _ => null,
+  };
+}
+
 /// Notificações do Social: uma por conversa, com quem mandou e o texto de cada mensagem,
 /// acumulando até a pessoa abrir a conversa (como WhatsApp e Discord).
 class NotifSocial {
@@ -111,14 +129,22 @@ class NotifSocial {
   /// Trata a resposta de `inbox`/`notifications`: decifra, acumula e mostra.
   static Future<void> processar(Map<String, dynamic> r) async {
     final todasLinhas = (r['messages'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    if (todasLinhas.isEmpty) return;
+    final eventos = (r['events'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    if (todasLinhas.isEmpty && eventos.isEmpty) return;
     await Cfg.recarregar(); // o push do Android roda em outro isolate
-    // as linhas vêm da mais nova para a mais antiga
-    if ('${todasLinhas.first['created_at']}'.compareTo(Cfg.socialUltimaNotif) > 0) {
-      await Cfg.setSocialUltimaNotif('${todasLinhas.first['created_at']}');
-    }
-    // o push e a escuta em tempo real podem trazer a mesma mensagem: avisa uma vez só
+    // as linhas vêm da mais nova para a mais antiga; o cursor é a mais nova de todas
+    final datas = [for (final x in [...todasLinhas, ...eventos]) '${x['created_at']}']..sort();
+    if (datas.last.compareTo(Cfg.socialUltimaNotif) > 0) await Cfg.setSocialUltimaNotif(datas.last);
+    // o push e a escuta em tempo real podem trazer a mesma coisa: avisa uma vez só
     final vistas = Cfg.socialNotifIds.toSet();
+    final eventosNovos = eventos.where((e) => !vistas.contains('e:${e['id']}')).toList();
+    if (eventosNovos.isNotEmpty) {
+      await Cfg.setSocialNotifIds([...Cfg.socialNotifIds, for (final e in eventosNovos) 'e:${e['id']}']);
+      for (final e in eventosNovos.reversed) {
+        final t = textoDoEvento('${e['kind']}', e['data'] is Map ? Map<String, dynamic>.from(e['data'] as Map) : const {});
+        if (t != null) await Notif.mostrar(9000 + ('${e['id']}'.hashCode.abs() % 900), t.titulo, t.corpo, payload: 'social:evento');
+      }
+    }
     final rows = todasLinhas.where((m) => m['id'] == null || !vistas.contains('${m['id']}')).toList();
     if (rows.isEmpty) return;
     await Cfg.setSocialNotifIds([...Cfg.socialNotifIds, for (final m in rows.reversed) if (m['id'] != null) '${m['id']}']);

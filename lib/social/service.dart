@@ -429,6 +429,28 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
     await groupAction('update_group', {'conversationId': conversationId, 'iconPath': path});
   }
 
+  /// Fundo do perfil com foto (#4). Reduzida para 1280 px; null tira a foto (fica a cor).
+  Future<void> setBanner(Uint8List? original) async {
+    if (original == null) {
+      await updateProfile({'bannerPath': null});
+      return;
+    }
+    final r = await shrinkImage(original, 1280);
+    final path = await _uploadRaw('banner', r.bytes, contentType: r.reencoded ? 'image/png' : mimeOf('x.jpg'));
+    await updateProfile({'bannerPath': path});
+  }
+
+  /// Fundo do grupo com foto (#4).
+  Future<void> setGroupBanner(String conversationId, Uint8List? original) async {
+    if (original == null) {
+      await groupAction('update_group', {'conversationId': conversationId, 'bannerPath': null});
+      return;
+    }
+    final r = await shrinkImage(original, 1280);
+    final path = await _uploadRaw('gbanner', r.bytes, conversationId: conversationId, contentType: r.reencoded ? 'image/png' : mimeOf('x.jpg'));
+    await groupAction('update_group', {'conversationId': conversationId, 'bannerPath': path});
+  }
+
   /// Cifra e envia um anexo. Imagens grandes são reduzidas para 1280 px.
   Future<SocialAttachment> uploadAttachment(String conversationId, String name, Uint8List bytes) async {
     var data = bytes;

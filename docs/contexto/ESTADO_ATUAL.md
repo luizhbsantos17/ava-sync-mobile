@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-16 (versão 0.8.0 + app de computador, push e correção de faltas na branch `feature/desktop`)
+Última atualização: 2026-11-16 (versão 1.0.0: computador, push, cargos e categorias)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -21,23 +21,25 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
 - Canal beta instalável ao lado do oficial.
 - Sync só do semestre atual; seleção de matérias por lista.
 
+- **App de computador** (Windows, Linux, macOS), mesmo código do Android: bandeja,
+  segundo plano por relógios, abrir com o sistema, layout largo, Social em painéis,
+  instalador do Windows com atualização automática. CI gera os três na mesma release.
+- **Social em tempo real**: `inbox` (long polling) + notificação por conversa com nome e
+  texto, acumulando até ler. **Push do Android pelo Firebase** com o app fechado
+  (testado pelo dono no celular em 2026-11-16).
+- **Social v3**: cargos personalizados (cor, hierarquia, permissões, vários por pessoa,
+  @cargo), categorias de canais, fundo com foto no perfil e no grupo, cor do grupo,
+  notificações de amizade, grupo e cargo (issues #1, #2, #4, #5).
+- Regra de reservar tarefa (skill `reservar-tarefa`, etiqueta `em andamento`).
+
 ## Em andamento
-- **App de computador** (Windows, Linux, macOS) na branch `feature/desktop`: mesmo código
-  do Android, com bandeja, segundo plano por relógios, abrir com o sistema, layout largo,
-  Social em painéis e instalador do Windows (Inno Setup) com atualização automática.
-  `flutter analyze` e `flutter test` passam no Windows. Falta: compilar e abrir o app de
-  verdade (no Windows local precisa do Modo de Desenvolvedor) e conferir o CI de Linux e macOS.
-- **Social em tempo real** (mesma branch, issue #1): ação `inbox` na Edge Function (long
-  polling da caixa de entrada) e `EscutaSocial` no app; notificação por conversa com nome e
-  texto, acumulando até ler. **A Edge Function nova ainda não foi publicada**: até lá o app
-  pergunta `notifications` a cada 5 s.
-- **Push do Android (Firebase)** na mesma branch: decidido pelo dono em 2026-11-16. Código
-  pronto (PushService.kt, `lib/social/push.dart`, tabela `social_push_tokens`, envio em
-  `send_message`). **Falta o dono configurar o Firebase** (passo a passo em
-  `docs/FIREBASE_PUSH.md`), publicar migration e função, e testar com o app fechado.
-  O Kotlin do push nunca foi compilado (este PC não tem Android SDK; o CI compila).
+- (nada)
 
 ## Problemas conhecidos / não verificado
+- App de computador ainda não foi aberto por ninguém (só build no CI e testes). Conferir
+  bandeja, notificação do Windows, layout largo, atualização automática e Q-Acadêmico no WebView2.
+- Social v3 (cargos, categorias, fundo com foto, eventos) só tem testes de unidade e
+  checagem de tipos do servidor; conferir com duas contas reais.
 - Correção dos limites de faltas não testada em celular com importação real.
 - Social v2 ainda não foi testado em celular com duas contas reais (só testes de
   unidade e chamadas de erro na função). Conferir: envio de foto, envelope de chave
@@ -59,8 +61,8 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   em nenhum sistema (só testes de unidade).
 
 ## Ideias / próximos passos (não decididos)
-- Issues #1 a #5 (tempo real, cargos/categorias, voz, personalização, fundo do perfil):
-  combinado com o dono fazer depois do app de computador, valendo para os dois.
+- **Canais de voz (issue #3)**: decidido pelo dono usar LiveKit Cloud (plano grátis) na
+  versão seguinte; ele cria a conta e põe as chaves no Supabase, como no Firebase.
 - Computador: exportar prazos em `.ics` no lugar da agenda do celular.
 - **Decidido pelo dono, fazer depois do teste da beta:** guardar a chave de cada conversa
   no servidor (cifrada com segredo da Edge Function), estilo Discord, no lugar de só no
