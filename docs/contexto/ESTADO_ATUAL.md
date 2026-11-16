@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-16 (versão 1.0.1: menções com nome e prioridade, issue #7)
+Última atualização: 2026-11-16 (1.1.0 na branch `feature/social-fluidez`: Social fluido, notificações por grupo, arrastar, turma; inclui o PR #9)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -36,9 +36,19 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   silenciado (só @você/@cargo, não @todos).
 
 ## Em andamento
-- (nada)
+- **1.1.0** (branch `feature/social-fluidez`, inclui `fix/mencoes`/#9): animações e menus no
+  Social, arrastar grupos/canais/categorias, notificações por grupo (`notify`), @all,
+  pular para não lidas e menções, turma de ingresso, Enter para enviar e painéis no
+  computador, pasta de arquivos e instalador com escolha de pasta. Banco (migration
+  `202611160003_social_v4`) e Edge Function já publicados. Falta: testar no celular e no
+  Windows; o dono decide o merge.
 
 ## Problemas conhecidos / não verificado
+- Turma de ingresso só aparece se o usuário do AVA começar com ano+semestre (ex.: 20242...).
+  Se o login do AVA for CPF ou outro formato, fica sem turma. Aparece depois que a sessão
+  do Social renova (até 12 h) ou ao entrar de novo.
+- 1.1.0: testes não rodam no PC sem Visual Studio C++ (pacotes nativos do computador);
+  conferidos no GitHub Actions.
 - App de computador ainda não foi aberto por ninguém (só build no CI e testes). Conferir
   bandeja, notificação do Windows, layout largo, atualização automática e Q-Acadêmico no WebView2.
 - Social v3 (cargos, categorias, fundo com foto, eventos) só tem testes de unidade e

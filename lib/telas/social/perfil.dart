@@ -160,9 +160,12 @@ class _PerfilSheetState extends State<_PerfilSheet> {
                 if (membro != null) ...[const SizedBox(width: 8), EtiquetaCargo(membro.role)],
               ]),
               Text(p.username.isEmpty ? '' : '@${p.username}', style: TextStyle(color: cs.onSurfaceVariant)),
-              if (cargos.isNotEmpty) ...[
+              if (cargos.isNotEmpty || p.cohort != null) ...[
                 const SizedBox(height: 8),
-                Wrap(spacing: 6, runSpacing: 6, children: [for (final c in cargos) EtiquetaCargoPersonalizado(c)]),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  if (p.cohort != null) EtiquetaTurma(p.cohort!, grande: true),
+                  for (final c in cargos) EtiquetaCargoPersonalizado(c),
+                ]),
               ],
               const SizedBox(height: 8),
               Row(children: [
@@ -652,6 +655,7 @@ class _VoceAbaState extends State<VoceAba> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(me.displayName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
               Text('@${me.username}', style: TextStyle(color: cs.onSurfaceVariant)),
+              if (me.cohort != null) ...[const SizedBox(height: 6), EtiquetaTurma(me.cohort!, grande: true)],
               const SizedBox(height: 12),
               InkWell(
                 borderRadius: BorderRadius.circular(12),

@@ -18,6 +18,10 @@ class PainelConversa extends InheritedNotifier<ValueNotifier<ChatAberto?>> {
 
   static ValueNotifier<ChatAberto?>? maybeOf(BuildContext context) =>
       context.getInheritedWidgetOfExactType<PainelConversa>()?.notifier;
+
+  /// Como [maybeOf], mas redesenha quem chamou quando outra conversa é aberta.
+  static ValueNotifier<ChatAberto?>? watch(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<PainelConversa>()?.notifier;
 }
 
 /// Abre a conversa no painel (tela larga) ou numa tela nova (celular).

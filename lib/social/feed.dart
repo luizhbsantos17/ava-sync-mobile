@@ -212,7 +212,7 @@ class ChannelFeed extends ChangeNotifier {
     final out = <String>{};
     for (final m in RegExp(r'@([a-z0-9_.]{2,24})', caseSensitive: false).allMatches(text)) {
       final name = m.group(1)!.toLowerCase();
-      if (name == 'everyone' || name == 'todos') {
+      if (ehTodos(name)) {
         out.add('everyone');
       } else if (usernames[name] != null) {
         out.add(usernames[name]!);

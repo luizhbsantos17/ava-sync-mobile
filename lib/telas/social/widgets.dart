@@ -384,7 +384,7 @@ class _TextoMensagemState extends State<TextoMensagem> {
     _toques.clear();
     final cs = Theme.of(context).colorScheme;
     final base = widget.estilo ?? DefaultTextStyle.of(context).style;
-    final trechos = formatar(widget.texto);
+    final trechos = formatarComCache(widget.texto);
     if (soEmojis(widget.texto)) {
       return Text(widget.texto, style: base.copyWith(fontSize: 40, height: 1.15));
     }
@@ -453,7 +453,7 @@ class _TextoMensagemState extends State<TextoMensagem> {
       }
       if (t.mencao != null) {
         final r = widget.resolverMencao?.call(t.mencao!);
-        final todos = t.mencao == 'everyone' || t.mencao == 'todos';
+        final todos = ehTodos(t.mencao!);
         if (r != null || todos) {
           final destaque = todos || r!.eu;
           spans.add(TextSpan(
@@ -580,6 +580,333 @@ class Vazio extends StatelessWidget {
           if (acao != null) ...[const SizedBox(height: 16), acao!],
         ]),
       ),
+    );
+  }
+}
+
+
+// ------------------------------------------------------------ cache da formatação
+final Map<String, List<Trecho>> _trechosCache = {};
+
+/// [formatar] guardado: rolar a conversa não refaz o trabalho de cada mensagem.
+List<Trecho> formatarComCache(String texto) {
+  final pronto = _trechosCache.remove(texto);
+  if (pronto != null) return _trechosCache[texto] = pronto; // volta para o fim (mais recente)
+  final novo = formatar(texto);
+  _trechosCache[texto] = novo;
+  if (_trechosCache.length > 600) _trechosCache.remove(_trechosCache.keys.first);
+  return novo;
+}
+
+// ------------------------------------------------------------ menus de contexto
+/// Item de menu de contexto (segurar o dedo ou clique direito).
+class ItemMenu<T> {
+  final T? valor;
+  final IconData? icone;
+  final String texto;
+  final String? detalhe;
+  final bool perigo;
+  final bool divisor;
+  const ItemMenu(this.valor, this.texto, {this.icone, this.detalhe, this.perigo = false}) : divisor = false;
+  const ItemMenu.divisor()
+      : valor = null,
+        texto = '',
+        icone = null,
+        detalhe = null,
+        perigo = false,
+        divisor = true;
+}
+
+/// Abre o menu: com [posicao] (clique direito no computador) aparece onde está o
+/// mouse; sem, sobe uma folha de baixo (celular). [topo] vai acima dos itens na folha.
+Future<T?> abrirMenu<T>(BuildContext context, {Offset? posicao, required List<ItemMenu<T>> itens, String? titulo, Widget? topo}) async {
+  final cs = Theme.of(context).colorScheme;
+  HapticFeedback.mediumImpact();
+  if (posicao != null) {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    return showMenu<T>(
+      context: context,
+      position: RelativeRect.fromRect(posicao & const Size(1, 1), Offset.zero & overlay.size),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      popUpAnimationStyle: const AnimationStyle(duration: Duration(milliseconds: 140), reverseDuration: Duration(milliseconds: 90)),
+      items: [
+        if (titulo != null) PopupMenuItem<T>(enabled: false, height: 30, child: Text(titulo, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: cs.onSurfaceVariant))),
+        for (final i in itens)
+          if (i.divisor)
+            const PopupMenuDivider(height: 8)
+          else
+            PopupMenuItem<T>(
+              value: i.valor,
+              height: 40,
+              child: Row(children: [
+                Icon(i.icone ?? Icons.circle_outlined, size: 19, color: i.perigo ? corOcupado : cs.onSurfaceVariant),
+                const SizedBox(width: 12),
+                Expanded(child: Text(i.texto, style: TextStyle(color: i.perigo ? corOcupado : null, fontSize: 14))),
+              ]),
+            ),
+      ],
+    );
+  }
+  return showModalBottomSheet<T>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (ctx) => SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .8),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (titulo != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(titulo, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ),
+            ?topo,
+            for (final (n, i) in itens.indexed)
+              if (i.divisor)
+                const Divider(height: 12)
+              else
+                _EntradaMenu(
+                  atraso: n,
+                  child: ListTile(
+                    leading: Icon(i.icone, color: i.perigo ? corOcupado : null),
+                    title: Text(i.texto, style: TextStyle(color: i.perigo ? corOcupado : null)),
+                    subtitle: i.detalhe == null ? null : Text(i.detalhe!),
+                    onTap: () => Navigator.pop(ctx, i.valor),
+                  ),
+                ),
+          ]),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Itens do menu entram um depois do outro (bem rápido), em vez de aparecer de uma vez.
+class _EntradaMenu extends StatelessWidget {
+  final int atraso;
+  final Widget child;
+  const _EntradaMenu({required this.atraso, required this.child});
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: Duration(milliseconds: 180 + 25 * atraso.clamp(0, 10)),
+        curve: Curves.easeOutCubic,
+        builder: (context, t, c) => Opacity(opacity: t, child: Transform.translate(offset: Offset(0, 10 * (1 - t)), child: c)),
+        child: child,
+      );
+}
+
+/// Segurar o dedo (celular) ou clique direito (computador) chama [aoMenu] com a
+/// posição do mouse (null no toque, para abrir a folha de baixo).
+class ComMenu extends StatelessWidget {
+  final void Function(Offset? posicao)? aoMenu;
+  final Widget child;
+  const ComMenu({super.key, required this.aoMenu, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (aoMenu == null) return child;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () => aoMenu!(null),
+      onSecondaryTapUp: (d) => aoMenu!(d.globalPosition),
+      child: child,
+    );
+  }
+}
+
+// ------------------------------------------------------------ toque e mouse
+/// Fundo que acende ao passar o mouse e "afunda" de leve ao tocar: dá resposta
+/// imediata a qualquer item clicável (canais, conversas, membros).
+class Tocavel extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? aoTocar;
+  final void Function(Offset? posicao)? aoMenu;
+  final bool selecionado;
+  final BorderRadius raio;
+  final EdgeInsetsGeometry margem;
+  const Tocavel({
+    super.key,
+    required this.child,
+    this.aoTocar,
+    this.aoMenu,
+    this.selecionado = false,
+    this.raio = const BorderRadius.all(Radius.circular(8)),
+    this.margem = EdgeInsets.zero,
+  });
+
+  @override
+  State<Tocavel> createState() => _TocavelState();
+}
+
+class _TocavelState extends State<Tocavel> {
+  bool _mouse = false;
+  bool _apertado = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final fundo = widget.selecionado
+        ? cs.secondaryContainer.withValues(alpha: .75)
+        : _mouse
+            ? cs.onSurface.withValues(alpha: .06)
+            : Colors.transparent;
+    return Padding(
+      padding: widget.margem,
+      child: MouseRegion(
+        cursor: widget.aoTocar == null ? MouseCursor.defer : SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _mouse = true),
+        onExit: (_) => setState(() => _mouse = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: widget.aoTocar == null ? null : (_) => setState(() => _apertado = true),
+          onTapCancel: () => setState(() => _apertado = false),
+          onTapUp: widget.aoTocar == null ? null : (_) => setState(() => _apertado = false),
+          onTap: widget.aoTocar == null
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  widget.aoTocar!();
+                },
+          onLongPress: widget.aoMenu == null ? null : () => widget.aoMenu!(null),
+          onSecondaryTapUp: widget.aoMenu == null ? null : (d) => widget.aoMenu!(d.globalPosition),
+          child: AnimatedScale(
+            scale: _apertado ? .97 : 1,
+            duration: const Duration(milliseconds: 110),
+            curve: Curves.easeOut,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOut,
+              decoration: BoxDecoration(color: fundo, borderRadius: widget.raio),
+              child: widget.child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Entra deslizando e aparecendo (listas, cartões). [ordem] escalona a entrada.
+class Surgir extends StatelessWidget {
+  final Widget child;
+  final int ordem;
+  final double deslocamento;
+  const Surgir({super.key, required this.child, this.ordem = 0, this.deslocamento = 12});
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: Duration(milliseconds: 220 + 30 * ordem.clamp(0, 12)),
+        curve: Curves.easeOutCubic,
+        builder: (context, t, c) => Opacity(opacity: t, child: Transform.translate(offset: Offset(0, deslocamento * (1 - t)), child: c)),
+        child: child,
+      );
+}
+
+/// Turma de ingresso (ex.: 2024/2): cargo fixo de cada pessoa, vindo do AVA.
+class EtiquetaTurma extends StatelessWidget {
+  final String turma;
+  final bool grande;
+  const EtiquetaTurma(this.turma, {super.key, this.grande = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: 'Turma de ingresso (vem do AVA, não muda)',
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: grande ? 8 : 5, vertical: grande ? 3 : 1),
+        decoration: BoxDecoration(
+          color: cs.tertiaryContainer.withValues(alpha: .7),
+          borderRadius: BorderRadius.circular(grande ? 8 : 4),
+          border: Border.all(color: cs.tertiary.withValues(alpha: .35)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.school_rounded, size: grande ? 14 : 11, color: cs.onTertiaryContainer),
+          SizedBox(width: grande ? 4 : 2),
+          Text(turma, style: TextStyle(fontSize: grande ? 12.5 : 9.5, fontWeight: FontWeight.w800, color: cs.onTertiaryContainer)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Escolher o que avisar de um grupo (todas, só menções, nada) e ignorar @todos/@cargos.
+Future<void> configurarNotificacoes(BuildContext context, SocialConversation c) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (_) => _NotificacoesGrupo(conversationId: c.id),
+  );
+}
+
+class _NotificacoesGrupo extends StatelessWidget {
+  final String conversationId;
+  const _NotificacoesGrupo({required this.conversationId});
+
+  Future<void> _mudar(BuildContext context, {NotificarGrupo? notify, bool? todos, bool? cargos}) async {
+    try {
+      await social.setNotify(conversationId, notify: notify, suppressEveryone: todos, suppressRoles: cargos);
+    } catch (e) {
+      if (context.mounted) mostrarAviso(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: social,
+      builder: (context, _) {
+        final c = social.conversation(conversationId);
+        if (c == null) return const SizedBox(height: 120);
+        return SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: Text('Notificações · ${c.nome}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            ),
+            RadioGroup<NotificarGrupo>(
+              groupValue: c.notify,
+              onChanged: (v) => _mudar(context, notify: v),
+              child: Column(children: [
+                for (final n in NotificarGrupo.values)
+                  RadioListTile<NotificarGrupo>(
+                    value: n,
+                    title: Text(n.rotulo),
+                    subtitle: Text(n.descricao),
+                    secondary: Icon(switch (n) {
+                      NotificarGrupo.tudo => Icons.notifications_active_outlined,
+                      NotificarGrupo.mencoes => Icons.alternate_email_rounded,
+                      NotificarGrupo.nada => Icons.notifications_off_outlined,
+                    }),
+                  ),
+              ]),
+            ),
+            if (!c.direta) ...[
+              const Divider(),
+              SwitchListTile(
+                secondary: const Icon(Icons.groups_outlined),
+                title: const Text('Ignorar @todos'),
+                subtitle: const Text('Marcação do grupo inteiro não avisa nem conta como menção'),
+                value: c.suppressEveryone,
+                onChanged: c.notify == NotificarGrupo.nada ? null : (v) => _mudar(context, todos: v),
+              ),
+              SwitchListTile(
+                secondary: const Icon(Icons.shield_outlined),
+                title: const Text('Ignorar menções de cargos'),
+                subtitle: const Text('@monitor, @turma… não avisam; só quando marcam você'),
+                value: c.suppressRoles,
+                onChanged: c.notify == NotificarGrupo.nada ? null : (v) => _mudar(context, cargos: v),
+              ),
+            ],
+            const SizedBox(height: 8),
+          ]),
+        );
+      },
     );
   }
 }

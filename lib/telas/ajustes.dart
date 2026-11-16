@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../armazenamento.dart';
@@ -11,6 +14,7 @@ import '../config.dart';
 import '../estado_app.dart';
 import '../fundo.dart';
 import '../ia.dart';
+import '../salvar.dart';
 import '../util.dart';
 import 'atualizar.dart';
 
@@ -22,12 +26,14 @@ class AjustesAba extends StatefulWidget {
 
 class _AjustesAbaState extends State<AjustesAba> {
   int? _espaco;
+  String? _pasta;
   bool _verificandoAtualizacao = false;
 
   @override
   void initState() {
     super.initState();
     Store.tamanho().then((v) => mounted ? setState(() => _espaco = v) : null);
+    Store.base().then((d) => mounted ? setState(() => _pasta = d.path) : null);
   }
 
   Future<void> _mudar(Future<void> Function() f, {bool reagendar = false}) async {
@@ -254,6 +260,43 @@ class _AjustesAbaState extends State<AjustesAba> {
   }
 
 
+  Future<void> _trocarPasta() async {
+    final nova = await FilePicker.getDirectoryPath(dialogTitle: 'Onde salvar os arquivos do AVA Sync', initialDirectory: Cfg.pastaArquivos.isEmpty ? null : Cfg.pastaArquivos);
+    if (nova == null || !mounted) return;
+    await _aplicarPasta(nova);
+  }
+
+  Future<void> _aplicarPasta(String nova) async {
+    final mover = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Levar os arquivos já baixados?'),
+        content: Text(nova.isEmpty
+            ? 'Os arquivos voltam para a pasta padrão do app.'
+            : 'Os arquivos ficam em "$nova${Platform.pathSeparator}AVA Sync". Mover os que já foram baixados para lá?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Não, só os novos')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Mover')),
+        ],
+      ),
+    );
+    if (mover == null) return;
+    try {
+      await Store.trocarPasta(nova, mover: mover);
+      final d = await Store.base();
+      final t = await Store.tamanho();
+      if (mounted) {
+        setState(() {
+          _pasta = d.path;
+          _espaco = t;
+        });
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível usar essa pasta: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cab = Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary);
@@ -388,6 +431,35 @@ class _AjustesAbaState extends State<AjustesAba> {
             await Cfg.setIniciarComSistema(v);
             await IniciarComSistema.aplicar(v, nome: JanelaDesktop.nomeApp, argumentos: const [JanelaDesktop.argOculto]);
           }),
+        ),
+      ],
+      if (Plataforma.desktop) ...[
+        secao('Arquivos no computador'),
+        ListTile(
+          leading: const Icon(Icons.folder_outlined),
+          title: const Text('Pasta dos arquivos baixados'),
+          subtitle: Text(_pasta ?? 'carregando...', maxLines: 2, overflow: TextOverflow.ellipsis),
+          trailing: Wrap(spacing: 4, children: [
+            IconButton(
+              tooltip: 'Abrir a pasta',
+              icon: const Icon(Icons.open_in_new_rounded),
+              onPressed: _pasta == null ? null : () => abrirPasta(_pasta!),
+            ),
+            FilledButton.tonal(onPressed: _trocarPasta, child: const Text('Trocar')),
+          ]),
+        ),
+        if (Cfg.pastaArquivos.isNotEmpty)
+          ListTile(
+            leading: const Icon(Icons.restore_rounded),
+            title: const Text('Voltar para a pasta padrão'),
+            onTap: () => _aplicarPasta(''),
+          ),
+        SwitchListTile(
+          secondary: const Icon(Icons.save_alt_rounded),
+          title: const Text('Perguntar onde salvar'),
+          subtitle: const Text('Ao salvar fotos e anexos do Social. Desligado, vão direto para a pasta de Downloads (AVA Sync).'),
+          value: Cfg.perguntarOndeSalvar,
+          onChanged: (v) => _mudar(() => Cfg.setPerguntarOndeSalvar(v)),
         ),
       ],
       if (Plataforma.temAgenda) secao('Agenda do celular (Google Agenda)'),

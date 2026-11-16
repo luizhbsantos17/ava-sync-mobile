@@ -124,3 +124,18 @@ Mensagem sem canal cai no primeiro canal da conversa (gatilho `social_message_de
   silenciado, só mensagens com `mentions` ∩ {você, role:<seus cargos>} passam (filtro `ov`),
   também no push.
 
+
+
+## Notificações por grupo (v4)
+
+Cada membro escolhe em `social_members.notify`: `all` (toda mensagem), `mentions` (só quando
+marcam: @você, @cargo seu e @todos — os dois últimos podem ser ignorados com
+`suppress_everyone` e `suppress_roles`) ou `none`. O push, a caixa de entrada (`inbox`) e o
+contador de menções do `social_overview` respeitam essas opções. `muted` fica igual a
+`notify <> 'all'` para o app antigo, e `set_member_prefs {muted}` vira `notify`.
+
+## Organizar canais (v4)
+
+`arrange_channels {conversationId, categoryIds[], channels:[{id, categoryId}]}` grava de uma
+vez a ordem das categorias e, na ordem da lista, a categoria e a posição de cada canal.
+Exige a permissão de gerenciar canais.

@@ -63,6 +63,23 @@ class Cfg {
   static bool get permissaoPedida => _p.getBool('perm_notif') ?? false;
   static Future<void> setPermissaoPedida(bool v) => _p.setBool('perm_notif', v);
 
+  // ---- arquivos (computador) ----
+  /// Pasta escolhida para os arquivos baixados (vazia = padrão). O app usa uma
+  /// subpasta "AVA Sync" dentro dela, para nunca misturar com outros arquivos.
+  static String get pastaArquivos => _p.getString('pasta_arquivos') ?? '';
+  static Future<void> setPastaArquivos(String v) => _p.setString('pasta_arquivos', v);
+  /// Ao salvar um anexo do Social, perguntar onde (em vez de usar a pasta de downloads).
+  static bool get perguntarOndeSalvar => _p.getBool('perguntar_onde_salvar') ?? true;
+  static Future<void> setPerguntarOndeSalvar(bool v) => _p.setBool('perguntar_onde_salvar', v);
+  /// Ordem dos grupos na barra lateral do Social (ids).
+  static List<String> get socialOrdemGrupos => _p.getStringList('social_ordem_grupos') ?? const [];
+  static Future<void> setSocialOrdemGrupos(List<String> v) => _p.setStringList('social_ordem_grupos', v);
+  /// Computador: lista de canais do Social recolhida e membros à direita.
+  static bool get socialListaRecolhida => _p.getBool('social_lista_recolhida') ?? false;
+  static Future<void> setSocialListaRecolhida(bool v) => _p.setBool('social_lista_recolhida', v);
+  static bool get socialMembrosVisiveis => _p.getBool('social_membros_visiveis') ?? true;
+  static Future<void> setSocialMembrosVisiveis(bool v) => _p.setBool('social_membros_visiveis', v);
+
   // ---- social ----
   static bool get socialNotificacoes => _p.getBool('social_notif') ?? true;
   static Future<void> setSocialNotificacoes(bool v) => _p.setBool('social_notif', v);

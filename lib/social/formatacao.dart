@@ -62,7 +62,7 @@ final _mencao = RegExp(r'@([a-zA-Z0-9_.]{2,24})');
 /// Usado na notificação, na busca e na prévia da conversa (#7).
 String trocarMencoes(String texto, String? Function(String usuario) nome) => texto.replaceAllMapped(_mencao, (m) {
       final u = m.group(1)!.toLowerCase();
-      if (u == 'everyone' || u == 'todos') return '@todos';
+      if (ehTodos(u)) return '@todos';
       final n = nome(u);
       return n == null ? m.group(0)! : '@$n';
     });
@@ -245,3 +245,6 @@ String apelidoCargo(String nome) {
   final t = b.toString().replaceAll(RegExp(r'[^a-z0-9_.]+'), '_').replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_|_$'), '');
   return t.isEmpty ? 'cargo' : (t.length > 24 ? t.substring(0, 24) : t);
 }
+
+/// @todos, @all e @everyone marcam o grupo inteiro.
+bool ehTodos(String usuario) => const {'everyone', 'todos', 'all'}.contains(usuario.toLowerCase());

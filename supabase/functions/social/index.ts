@@ -45,7 +45,7 @@ const ONLINE_WINDOW_MS = 100_000;
 const POLL_WAIT_MS = 20_000;
 const POLL_STEP_MS = 900;
 const MAX_CHANNELS = 30;
-const PROFILE_FIELDS = "user_key,username,display_name,bio,avatar_path,banner_path,banner_color,status,custom_status,custom_emoji,public_key,last_seen,created_at";
+const PROFILE_FIELDS = "user_key,username,display_name,bio,avatar_path,banner_path,banner_color,status,custom_status,custom_emoji,public_key,last_seen,created_at,cohort";
 const MESSAGE_FIELDS = "id,conversation_id,channel_id,sender_id,ciphertext,nonce,mac,format,reply_to,mentions,edited_at,deleted_at,pinned_at,pinned_by,created_at,rev";
 const roleRank: Record<string, number> = { owner: 3, admin: 2, member: 1 };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -157,7 +157,13 @@ async function validateMoodle(site: URL, token: string) {
   const info = await moodleCall(site, token, "core_webservice_get_site_info") as Record<string, unknown>;
   const userId = Number(info.userid);
   if (!Number.isSafeInteger(userId) || userId <= 0) fail("Não foi possível identificar a conta do AVA.", 401);
-  return { userId, displayName: String(info.fullname ?? "Estudante").slice(0, 48) };
+  return { userId, displayName: String(info.fullname ?? "Estudante").slice(0, 48), cohort: turmaDe(info.username) };
+}
+
+/// Turma de ingresso pelo usuário do AVA: "20242..." vira "2024/2". Outro formato: sem turma.
+export function turmaDe(username: unknown) {
+  const m = /^(20\d{2})([12])/.exec(String(username ?? "").trim());
+  return m ? `${m[1]}/${m[2]}` : null;
 }
 
 async function courseUsers(site: URL, token: string, courseId: number) {
@@ -213,7 +219,7 @@ async function storage(path: string, method: string, body?: unknown) {
 // ---------------------------------------------------------------- perfis
 const userHash = async (userKey: string) => (await sha256(userKey)).slice(0, 16);
 
-async function socialUser(host: string, moodleUserId: number, displayName: string, refreshName: boolean) {
+async function socialUser(host: string, moodleUserId: number, displayName: string, refreshName: boolean, cohort: string | null = null) {
   const userKey = `${host}:${moodleUserId}`;
   const hostCode = (await sha256(host)).slice(0, 6);
   const username = `ifes_${hostCode}_${moodleUserId}`.slice(0, 24).toLowerCase();
@@ -222,6 +228,9 @@ async function socialUser(host: string, moodleUserId: number, displayName: strin
     "resolution=ignore-duplicates,return=minimal");
   if (refreshName) {
     await db(`social_profiles?user_key=eq.${q(userKey)}&name_locked=eq.false`, "PATCH", { display_name: name }, "return=minimal");
+  }
+  if (cohort) {
+    await db(`social_profiles?user_key=eq.${q(userKey)}&or=(cohort.is.null,cohort.neq.${qv(cohort)})`, "PATCH", { cohort }, "return=minimal");
   }
   return userKey;
 }
@@ -248,6 +257,7 @@ function shapeProfile(p: Row | null | undefined, self = false): Row | null {
     presence: self && p.status !== "invisible" ? String(p.status ?? "online") : presence(p),
     last_seen: p.status === "invisible" && !self ? null : p.last_seen ?? null,
     created_at: p.created_at ?? null,
+    cohort: p.cohort ?? null,
   };
   if (self) out.status = p.status ?? "online";
   return out;
@@ -418,22 +428,37 @@ function sinceOf(payload: Row) {
   return typeof payload.since === "string" ? payload.since : new Date(Date.now() - 3600_000).toISOString();
 }
 
+/// Conversas em que a pessoa quer saber de toda mensagem (notify = all).
 async function unmutedConversations(userId: string) {
-  const members = await db(`social_members?user_key=eq.${q(userId)}&muted=eq.false&select=conversation_id`) as Row[];
+  const members = await db(`social_members?user_key=eq.${q(userId)}&notify=eq.all&select=conversation_id`) as Row[];
   return members.map((m) => String(m.conversation_id));
 }
 
-/// Grupos silenciados e o filtro "me marcou diretamente" (@você ou @cargo seu, sem @todos).
-/// Silenciar tira as mensagens comuns, mas a menção direta continua avisando (#7).
+type PrefsMencao = { suppress_everyone: boolean; suppress_roles: boolean };
+
+/// Grupos em "só menções" e o filtro largo (@você, @cargo seu, @todos). O filtro fino,
+/// que respeita "ignorar @todos" e "ignorar @cargos" de cada grupo, é [mencaoValida] (#7).
 async function mencoesSilenciadas(userId: string) {
-  const [muted, cargos] = await Promise.all([
-    db(`social_members?user_key=eq.${q(userId)}&muted=eq.true&select=conversation_id`) as Promise<Row[]>,
+  const [rows, cargos] = await Promise.all([
+    db(`social_members?user_key=eq.${q(userId)}&notify=eq.mentions&select=conversation_id,suppress_everyone,suppress_roles`) as Promise<Row[]>,
     db(`social_member_roles?user_key=eq.${q(userId)}&select=role_id`) as Promise<Row[]>,
   ]);
-  const ids = muted.map((m) => String(m.conversation_id));
-  const alvos = [userId, ...cargos.map((r) => `role:${r.role_id}`)];
+  const ids = rows.map((m) => String(m.conversation_id));
+  const prefs = new Map<string, PrefsMencao>(rows.map((r) => [String(r.conversation_id), {
+    suppress_everyone: r.suppress_everyone === true, suppress_roles: r.suppress_roles === true,
+  }]));
+  const papeis = cargos.map((r) => `role:${r.role_id}`);
+  const alvos = [userId, "everyone", ...papeis];
   const filtro = `mentions=ov.${encodeURIComponent(`{${alvos.map((a) => `"${a.replace(/"/g, "")}"`).join(",")}}`)}`;
-  return { ids, filtro };
+  return { ids, filtro, prefs, papeis: new Set(papeis) };
+}
+
+/// A mensagem marca a pessoa, de acordo com as preferências do grupo?
+export function mencaoValida(mentions: string[], userId: string, papeis: Set<string>, prefs: PrefsMencao) {
+  if (mentions.includes(userId)) return true;
+  if (!prefs.suppress_everyone && mentions.includes("everyone")) return true;
+  if (!prefs.suppress_roles && mentions.some((m) => papeis.has(m))) return true;
+  return false;
 }
 
 /// Mensagens novas (de outras pessoas) depois de `since`, com títulos, canais e perfis
@@ -452,7 +477,9 @@ async function inboxSince(userId: string, since: string, ids: string[]) {
       ? db(`social_messages?conversation_id=in.(${sil.ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&${sil.filtro}&select=${MESSAGE_FIELDS}&order=created_at.desc&limit=30`) as Promise<Row[]>
       : Promise.resolve([] as Row[]),
   ]);
-  const rows = [...normais, ...marcadas].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 30);
+  const marcadasValidas = marcadas.filter((r) => mencaoValida((r.mentions as string[] | null) ?? [], userId, sil.papeis,
+    sil.prefs.get(String(r.conversation_id)) ?? { suppress_everyone: false, suppress_roles: false }));
+  const rows = [...normais, ...marcadasValidas].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 30);
   if (!rows.length) return { messages: [], conversations: [], channels: [], profiles: {}, events };
   const convIds = [...new Set(rows.map((r) => String(r.conversation_id)))];
   const chIds = [...new Set(rows.map((r) => String(r.channel_id)))];
@@ -539,13 +566,20 @@ async function nomeDe(userKey: string) {
 /// Push para os aparelhos dos outros membros (não silenciados) da conversa.
 async function avisarMembros(conversationId: string, channelId: string, senderId: string, mentions: string[] = []) {
   if (!pushConfigurado()) return;
-  const todos = await db(`social_members?conversation_id=eq.${q(conversationId)}&user_key=neq.${q(senderId)}&select=user_key,muted`) as Row[];
+  const todos = await db(`social_members?conversation_id=eq.${q(conversationId)}&user_key=neq.${q(senderId)}&select=user_key,notify,suppress_everyone,suppress_roles`) as Row[];
   const cargosMarcados = mentions.filter((m) => m.startsWith("role:")).map((m) => m.slice(5)).filter(isUuid);
   const comCargo = new Set(cargosMarcados.length
     ? (await db(`social_member_roles?role_id=in.(${cargosMarcados.map(q).join(",")})&select=user_key`) as Row[]).map((r) => String(r.user_key))
     : []);
   // silenciado só recebe se foi marcado diretamente (@você ou @cargo seu), como no Discord (#7)
-  const membros = todos.filter((m) => !m.muted || mentions.includes(String(m.user_key)) || comCargo.has(String(m.user_key)));
+  const membros = todos.filter((m) => {
+    const key = String(m.user_key);
+    if (m.notify === "all") return true;
+    if (m.notify === "none") return false;
+    if (mentions.includes(key)) return true;
+    if (m.suppress_everyone !== true && mentions.includes("everyone")) return true;
+    return m.suppress_roles !== true && comCargo.has(key);
+  });
   if (!membros.length) return;
   const tokens = await db(`social_push_tokens?user_key=in.(${membros.map((m) => qv(String(m.user_key))).join(",")})&select=token`) as Row[];
   const invalidos = await enviarPush(tokens.map((t) => String(t.token)), { tipo: "social", conversa: conversationId, canal: channelId });
@@ -557,7 +591,7 @@ async function avisarMembros(conversationId: string, channelId: string, senderId
 // ---------------------------------------------------------------- ações
 const moodleActions = new Set(["session", "me", "teacher_courses", "create_course_group"]);
 
-type Ctx = { userId: string; payload: Row; site?: URL; token?: string; host?: string; moodle?: { userId: number; displayName: string } };
+type Ctx = { userId: string; payload: Row; site?: URL; token?: string; host?: string; moodle?: { userId: number; displayName: string; cohort: string | null } };
 
 const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
   // --- sessão e compatibilidade
@@ -867,6 +901,9 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
       conversation: publicConv,
       myRole: me.role,
       muted: me.muted,
+      notify: me.notify ?? (me.muted ? "mentions" : "all"),
+      suppressEveryone: me.suppress_everyone === true,
+      suppressRoles: me.suppress_roles === true,
       nickname: me.nickname,
       channels,
       members: (members as Row[]).map((m) => ({ ...m, roles: rolesDe.get(String(m.user_key)) ?? [], profile: profiles[String(m.user_key)] })),
@@ -1052,7 +1089,18 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     const id = uuid(payload.conversationId, "Grupo");
     await requireMember(id, userId);
     const patch: Row = {};
-    if (typeof payload.muted === "boolean") patch.muted = payload.muted;
+    if (typeof payload.muted === "boolean") {
+      // app antigo: silenciar = só menções
+      patch.muted = payload.muted;
+      patch.notify = payload.muted ? "mentions" : "all";
+    }
+    if (payload.notify !== undefined) {
+      if (!["all", "mentions", "none"].includes(String(payload.notify))) fail("Opção de notificação inválida.");
+      patch.notify = payload.notify;
+      patch.muted = payload.notify !== "all";
+    }
+    if (typeof payload.suppressEveryone === "boolean") patch.suppress_everyone = payload.suppressEveryone;
+    if (typeof payload.suppressRoles === "boolean") patch.suppress_roles = payload.suppressRoles;
     const nick = optStr(payload.nickname, 32);
     if (nick !== undefined) patch.nickname = nick;
     if (Object.keys(patch).length) {
@@ -1103,6 +1151,31 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     for (let i = 0; i < order.length; i++) {
       await db(`social_channels?id=eq.${q(order[i])}&conversation_id=eq.${q(id)}`, "PATCH", { position: i }, "return=minimal");
     }
+    return { ok: true };
+  },
+
+  // Arrastar e soltar: ordem das categorias e, para cada canal, a categoria e a posição.
+  async arrange_channels({ userId, payload }) {
+    const id = uuid(payload.conversationId, "Grupo");
+    await requirePerm(id, userId, "gerenciar_canais");
+    const [canais, cats] = await Promise.all([
+      db(`social_channels?conversation_id=eq.${q(id)}&select=id`) as Promise<Row[]>,
+      db(`social_categories?conversation_id=eq.${q(id)}&select=id`) as Promise<Row[]>,
+    ]);
+    const meusCanais = new Set(canais.map((c) => String(c.id)));
+    const minhasCats = new Set(cats.map((c) => String(c.id)));
+    const ordemCats = Array.isArray(payload.categoryIds) ? (payload.categoryIds as unknown[]).map(String).filter((c) => minhasCats.has(c)) : [];
+    const itens = Array.isArray(payload.channels) ? (payload.channels as Row[]).slice(0, 200) : [];
+    const tarefas: Promise<unknown>[] = [];
+    ordemCats.forEach((cat, i) => tarefas.push(db(`social_categories?id=eq.${q(cat)}`, "PATCH", { position: i }, "return=minimal")));
+    itens.forEach((it, i) => {
+      const ch = String(it.id);
+      if (!meusCanais.has(ch)) return;
+      const cat = it.categoryId === null || it.categoryId === undefined ? null : String(it.categoryId);
+      if (cat !== null && !minhasCats.has(cat)) return;
+      tarefas.push(db(`social_channels?id=eq.${q(ch)}`, "PATCH", { position: i, category_id: cat }, "return=minimal"));
+    });
+    await Promise.all(tarefas);
     return { ok: true };
   },
 
@@ -1564,7 +1637,7 @@ async function main(req: Request) {
       ctx.token = String(input.token ?? "");
       ctx.moodle = await validateMoodle(ctx.site, ctx.token);
       ctx.host = ctx.site.hostname.toLowerCase();
-      ctx.userId = await socialUser(ctx.host, ctx.moodle.userId, ctx.moodle.displayName, true);
+      ctx.userId = await socialUser(ctx.host, ctx.moodle.userId, ctx.moodle.displayName, true, ctx.moodle.cohort);
     }
     return json(await handler(ctx));
   } catch (error) {
