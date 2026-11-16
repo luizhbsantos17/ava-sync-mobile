@@ -32,7 +32,9 @@ GitHub Releases <-- lib/atualizacao.dart        Supabase Edge Function "social" 
   `ColetorQA` abre o site num WebView oculto com o login da pessoa e lê as páginas
   t=2032 (boletim), t=2071 (diários) e t=2010 (horário). Os leitores (`lerBoletim`,
   `lerDiarios`, `lerHorario`) só olham tabelas "folha" (sem tabela dentro). Faltas:
-  limite = aulas previstas x (100 - mínimo%) / 100; os dias que ainda pode faltar
+  carga em horas convertida para aulas de 50 minutos quando não há total de aulas
+  distinto da carga; limite = total de aulas x (100 - mínimo%) / 100 (arredondado
+  para baixo); os dias que ainda pode faltar
   dividem pelas aulas daquele dia no horário (padrão 2).
 - **IA de estudo** (`lib/ia.dart`, `lib/telas/ia_tela.dart`): monta guias por matéria
   para provedores de IA configurados pela pessoa.
@@ -46,6 +48,22 @@ GitHub Releases <-- lib/atualizacao.dart        Supabase Edge Function "social" 
   direto de clientes. Mensagens e anexos cifrados com AES-GCM no aparelho; a chave da
   conversa vem do convite ou de um envelope X25519 de outro membro. Tempo real por
   long polling (`poll`, até 20 s). Professor confirmado por `core_enrol_get_enrolled_users`.
+
+## Computador (Windows, Linux, macOS)
+- Mesmo código do Android. `Plataforma.desktop` (`lib/plataforma.dart`) separa o que é
+  de sistema; as telas decidem o layout pela largura (`InicioTela.larguraLarga`, 900 px;
+  Social em painéis a partir de 760 px, `lib/telas/social/painel.dart`).
+- `lib/desktop/janela.dart`: janela (`window_manager`), bandeja (`tray_manager`), uma cópia
+  só (porta local 47231/47232), fechar = esconder. `--oculto` abre escondido.
+- `lib/desktop/segundo_plano.dart`: relógio de 30 s no lugar do workmanager (sync no
+  intervalo de Ajustes, Social a cada 1 min, lembretes na hora, atualização a cada 6 h).
+- `lib/desktop/iniciar_com_sistema.dart`: registro `Run` (Windows), `~/.config/autostart`
+  (Linux), LaunchAgent (macOS).
+- `lib/navegador_web.dart`: navegador do Q-Acadêmico; `webview_flutter` no Android/macOS,
+  WebView2 (`webview_windows`) no Windows, nenhum no Linux.
+- Atualização: arquivo da release por sistema (`Atualizacao.nomeDoArquivo`). Windows
+  baixa o instalador e roda em modo silencioso (`windows/instalador.iss`); Linux e macOS
+  abrem o download no navegador.
 
 ## Build e distribuição
 - Flavors Android: `production` (`io.github.avasync.mobile`, "AVA Sync") e `beta`

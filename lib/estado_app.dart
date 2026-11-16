@@ -1,3 +1,5 @@
+import 'social/escuta.dart';
+import 'social/push.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'armazenamento.dart';
@@ -155,6 +157,8 @@ class AppEstado extends ChangeNotifier {
   }
 
   Future<void> sair() async {
+    await PushSocial.esquecer(); // este aparelho para de receber avisos do Social
+    EscutaSocial.desligar();
     await Cfg.sair();
     logado = false;
     notifyListeners();

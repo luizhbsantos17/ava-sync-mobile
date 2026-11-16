@@ -143,6 +143,54 @@ class _SocialImagemState extends State<SocialImagem> {
   }
 }
 
+/// Fundo de perfil ou de grupo: a foto escolhida (#4) por cima da cor.
+class FundoSocial extends StatelessWidget {
+  final String? path;
+  final Color cor;
+  final double altura;
+  final BorderRadius? raio;
+  final Widget? child;
+  const FundoSocial({super.key, this.path, required this.cor, required this.altura, this.raio, this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget fundo = Container(height: altura, color: cor);
+    final p = path;
+    if (p != null) {
+      fundo = SizedBox(
+        height: altura,
+        width: double.infinity,
+        child: SocialImagem(path: p, placeholder: (_) => Container(color: cor)),
+      );
+    }
+    return ClipRRect(
+      borderRadius: raio ?? BorderRadius.zero,
+      child: Stack(fit: StackFit.passthrough, children: [fundo, if (child != null) Positioned.fill(child: child!)]),
+    );
+  }
+}
+
+/// Cargo personalizado com a cor dele (aparece no perfil e na lista de membros).
+class EtiquetaCargoPersonalizado extends StatelessWidget {
+  final SocialRole cargo;
+  const EtiquetaCargoPersonalizado(this.cargo, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final cor = cargo.color == null ? cs.onSurfaceVariant : Color(cargo.color!);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: cor, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Text(cargo.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
 class SocialAvatar extends StatelessWidget {
   final SocialProfile profile;
   final double size;

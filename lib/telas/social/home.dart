@@ -9,6 +9,7 @@ import '../../social/models.dart';
 import 'amigos.dart';
 import 'chat.dart';
 import 'grupo.dart';
+import 'painel.dart';
 import 'perfil.dart';
 import 'widgets.dart';
 
@@ -30,9 +31,25 @@ class _SocialTelaState extends State<SocialTela> {
   static String? _selecionado; // null = mensagens diretas
   int _aba = 0;
 
+  /// Tela larga: conversa aberta ao lado da lista.
+  final _chat = ValueNotifier<ChatAberto?>(null);
+
+  /// A partir desta largura o Social mostra lista e conversa lado a lado.
+  static const larguraPainel = 760.0;
+
+  @override
+  void dispose() {
+    _chat.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    // abrir uma conversa a partir de Amigos ou Você volta para a aba Conversas
+    _chat.addListener(() {
+      if (_aba != 0 && mounted) setState(() => _aba = 0);
+    });
     unawaited(_iniciar());
   }
 
@@ -67,15 +84,22 @@ class _SocialTelaState extends State<SocialTela> {
         }
         final naoLidasDm = social.conversations.where((c) => c.direta && !c.muted).fold(0, (s, c) => s + c.unread);
         final naoLidasGrupos = social.conversations.where((c) => !c.direta && !c.muted).fold(0, (s, c) => s + c.mentions);
+        final largo = MediaQuery.sizeOf(context).width >= larguraPainel;
+        Widget corpo = IndexedStack(index: _aba, children: [
+          _Conversas(
+            selecionado: _selecionado,
+            aoSelecionar: (id) => setState(() => _selecionado = id),
+            painel: largo ? _PainelChat(_chat) : null,
+          ),
+          const AmigosAba(),
+          const VoceAba(),
+        ]);
+        if (largo) {
+          // abrir uma conversa (de Amigos, por exemplo) volta para a aba Conversas
+          corpo = PainelConversa(notifier: _chat, child: corpo);
+        }
         return Scaffold(
-          body: IndexedStack(index: _aba, children: [
-            _Conversas(
-              selecionado: _selecionado,
-              aoSelecionar: (id) => setState(() => _selecionado = id),
-            ),
-            const AmigosAba(),
-            const VoceAba(),
-          ]),
+          body: corpo,
           bottomNavigationBar: NavigationBar(
             height: 64,
             selectedIndex: _aba,
@@ -116,13 +140,16 @@ Future<void> abrirDeNotificacao(BuildContext context, String payload) async {
   if (c == null || !context.mounted) return;
   final canal = c.channels.where((ch) => p.length > 2 && ch.id == p[2]).firstOrNull ?? c.primeiroCanal;
   if (canal == null) return;
-  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatTela(conversa: c, canal: canal)));
+  await abrirChat(context, c, canal);
 }
 
 class _Conversas extends StatelessWidget {
   final String? selecionado;
   final void Function(String?) aoSelecionar;
-  const _Conversas({required this.selecionado, required this.aoSelecionar});
+
+  /// Tela larga: a conversa aberta, mostrada à direita da lista.
+  final Widget? painel;
+  const _Conversas({required this.selecionado, required this.aoSelecionar, this.painel});
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +159,13 @@ class _Conversas extends StatelessWidget {
     final selecionadoValido = atual != null && !atual.direta;
     final dms = social.conversations.where((c) => c.direta).toList();
     final naoLidasDm = dms.where((c) => !c.muted).fold(0, (s, c) => s + c.unread);
+    final lista = Container(
+      color: cs.surfaceContainerLow,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        child: selecionadoValido ? _PainelGrupo(key: ValueKey(atual.id), c: atual) : _PainelDiretas(key: const ValueKey('dm'), dms: dms),
+      ),
+    );
 
     return SafeArea(
       bottom: false,
@@ -176,15 +210,8 @@ class _Conversas extends StatelessWidget {
             ),
           ]),
         ),
-        Expanded(
-          child: Container(
-            color: cs.surfaceContainerLow,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: selecionadoValido ? _PainelGrupo(key: ValueKey(atual.id), c: atual) : _PainelDiretas(key: const ValueKey('dm'), dms: dms),
-            ),
-          ),
-        ),
+        if (painel == null) Expanded(child: lista) else SizedBox(width: 300, child: lista),
+        if (painel != null) ...[const VerticalDivider(width: 1), Expanded(child: painel!)],
       ]),
     );
   }
@@ -329,9 +356,10 @@ class _ItemDireta extends StatelessWidget {
     return InkWell(
       onTap: () {
         final ch = c.primeiroCanal;
-        if (ch != null) Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatTela(conversa: c, canal: ch)));
+        if (ch != null) abrirChat(context, c, ch);
       },
       onLongPress: peer == null ? null : () => mostrarPerfil(context, peer.userKey),
+      onSecondaryTap: peer == null ? null : () => mostrarPerfil(context, peer.userKey),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(children: [
@@ -359,23 +387,51 @@ class _ItemDireta extends StatelessWidget {
   }
 }
 
-class _PainelGrupo extends StatelessWidget {
+class _PainelGrupo extends StatefulWidget {
   final SocialConversation c;
   const _PainelGrupo({super.key, required this.c});
 
   @override
+  State<_PainelGrupo> createState() => _PainelGrupoState();
+}
+
+class _PainelGrupoState extends State<_PainelGrupo> {
+  /// Categorias recolhidas (vale enquanto o app estiver aberto).
+  static final Set<String> _recolhidas = {};
+
+  Future<void> _criarCanal(BuildContext context, {String? categoria}) async {
+    final nome = await pedirTexto(context, titulo: 'Criar canal', rotulo: 'Nome do canal', max: 32, botao: 'Criar');
+    if (nome == null || nome.trim().isEmpty) return;
+    try {
+      await social.groupAction('create_channel', {'conversationId': widget.c.id, 'name': nome, 'categoryId': ?categoria});
+    } catch (e) {
+      if (context.mounted) mostrarAviso(context, e);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final c = widget.c;
     final cs = Theme.of(context).colorScheme;
-    final admin = c.role.gerencia;
+    final admin = c.pode(Permissao.gerenciarCanais);
+    final destaque = c.accentColor == null ? corDe(c.id) : Color(c.accentColor!);
+    // canais sem categoria primeiro, depois cada categoria na ordem escolhida (#2)
+    final ids = {for (final k in c.categories) k.id};
+    final soltos = c.channels.where((ch) => ch.categoryId == null || !ids.contains(ch.categoryId)).toList();
     return RefreshIndicator(
       onRefresh: social.refresh,
       child: ListView(padding: EdgeInsets.zero, children: [
+        if (c.bannerPath != null)
+          InkWell(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => GrupoConfigTela(conversationId: c.id))),
+            child: FundoSocial(path: c.bannerPath, cor: destaque, altura: 96),
+          ),
         InkWell(
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => GrupoConfigTela(conversationId: c.id))),
           child: Container(
             padding: const EdgeInsets.fromLTRB(16, 16, 8, 14),
             decoration: BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [corDe(c.id).withValues(alpha: .35), Colors.transparent]),
+              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [destaque.withValues(alpha: .35), Colors.transparent]),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
@@ -413,26 +469,47 @@ class _PainelGrupo extends StatelessWidget {
             decoration: BoxDecoration(color: corAusente.withValues(alpha: .15), borderRadius: BorderRadius.circular(10)),
             child: const Text('Aguardando a chave do grupo. Ela chega quando outro membro abrir o app.', style: TextStyle(fontSize: 12.5)),
           ),
-        SecaoTitulo(
-          'Canais de texto',
-          acao: admin
-              ? IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Criar canal',
-                  icon: const Icon(Icons.add_rounded, size: 20),
-                  onPressed: () async {
-                    final nome = await pedirTexto(context, titulo: 'Criar canal', rotulo: 'Nome do canal', max: 32, botao: 'Criar');
-                    if (nome == null || nome.trim().isEmpty) return;
-                    try {
-                      await social.groupAction('create_channel', {'conversationId': c.id, 'name': nome});
-                    } catch (e) {
-                      if (context.mounted) mostrarAviso(context, e);
-                    }
-                  },
-                )
-              : null,
-        ),
-        for (final ch in c.channels) _ItemCanal(c: c, ch: ch),
+        if (soltos.isNotEmpty || c.categories.isEmpty)
+          SecaoTitulo(
+            'Canais de texto',
+            acao: admin
+                ? IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Criar canal',
+                    icon: const Icon(Icons.add_rounded, size: 20),
+                    onPressed: () => _criarCanal(context),
+                  )
+                : null,
+          ),
+        for (final ch in soltos) _ItemCanal(c: c, ch: ch),
+        for (final k in c.categories) ...[
+          InkWell(
+            onTap: () => setState(() => _recolhidas.contains(k.id) ? _recolhidas.remove(k.id) : _recolhidas.add(k.id)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 14, 4, 2),
+              child: Row(children: [
+                Icon(_recolhidas.contains(k.id) ? Icons.chevron_right_rounded : Icons.expand_more_rounded, size: 16, color: cs.onSurfaceVariant),
+                const SizedBox(width: 2),
+                Expanded(
+                  child: Text(k.name.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .6, color: cs.onSurfaceVariant)),
+                ),
+                if (admin)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Criar canal em ${k.name}',
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    onPressed: () => _criarCanal(context, categoria: k.id),
+                  ),
+              ]),
+            ),
+          ),
+          for (final ch in c.channels.where((ch) => ch.categoryId == k.id))
+            // recolhida: só mostra os canais com mensagem não lida (como no Discord)
+            if (!_recolhidas.contains(k.id) || (ch.unread > 0 && !c.muted)) _ItemCanal(c: c, ch: ch),
+        ],
         const SizedBox(height: 16),
       ]),
     );
@@ -455,7 +532,7 @@ class _ItemCanal extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatTela(conversa: c, canal: ch))),
+          onTap: () => abrirChat(context, c, ch),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
             child: Row(children: [
@@ -470,6 +547,31 @@ class _ItemCanal extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Painel da direita na tela larga: a conversa aberta, ou um convite para escolher uma.
+class _PainelChat extends StatelessWidget {
+  final ValueNotifier<ChatAberto?> chat;
+  const _PainelChat(this.chat);
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ChatAberto?>(
+      valueListenable: chat,
+      builder: (context, aberto, _) {
+        // a conversa pode ter sumido (saiu do grupo, foi removido)
+        final c = aberto == null ? null : social.conversation(aberto.conversa.id);
+        final canal = c?.channels.where((ch) => ch.id == aberto!.canal.id).firstOrNull ?? c?.primeiroCanal;
+        if (c == null || canal == null) {
+          return const Vazio(
+              icone: Icons.forum_outlined,
+              titulo: 'Nenhuma conversa aberta',
+              texto: 'Escolha um canal ou uma mensagem direta na lista ao lado.');
+        }
+        return ChatTela(key: ValueKey('${c.id}:${canal.id}'), conversa: c, canal: canal);
+      },
     );
   }
 }

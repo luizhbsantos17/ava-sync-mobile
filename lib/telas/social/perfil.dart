@@ -109,7 +109,18 @@ class _PerfilSheetState extends State<_PerfilSheet> {
     final grupo = widget.grupo;
     final membro = grupo?.member(p.userKey);
     final meuCargo = grupo?.myRole ?? Cargo.member;
-    final podeModerar = grupo != null && membro != null && !eu && meuCargo.gerencia && meuCargo.nivel > membro.role.nivel && !grupo.conversation.direta;
+    // moderação por permissão e hierarquia (dono > admin > cargo mais alto), como no servidor
+    final acimaDele = grupo != null && membro != null && grupo.myRank > grupo.rankDe(membro);
+    final podeModerar = grupo != null &&
+        membro != null &&
+        !eu &&
+        acimaDele &&
+        !grupo.conversation.direta &&
+        (meuCargo == Cargo.owner ||
+            grupo.pode(Permissao.expulsar) ||
+            grupo.pode(Permissao.banir) ||
+            (grupo.pode(Permissao.gerenciarCargos) && grupo.roles.isNotEmpty));
+    final cargos = grupo != null && membro != null ? grupo.cargosDe(membro) : const <SocialRole>[];
     final banner = Color(p.bannerColor ?? corDe(p.userKey).toARGB32());
 
     return DraggableScrollableSheet(
@@ -124,10 +135,7 @@ class _PerfilSheetState extends State<_PerfilSheet> {
           SizedBox(
             height: 150,
             child: Stack(clipBehavior: Clip.none, children: [
-              Container(
-                height: 104,
-                decoration: BoxDecoration(color: banner, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
-              ),
+              FundoSocial(path: p.bannerPath, cor: banner, altura: 104, raio: const BorderRadius.vertical(top: Radius.circular(20))),
               Positioned(
                 left: 16,
                 top: 56,
@@ -152,6 +160,10 @@ class _PerfilSheetState extends State<_PerfilSheet> {
                 if (membro != null) ...[const SizedBox(width: 8), EtiquetaCargo(membro.role)],
               ]),
               Text(p.username.isEmpty ? '' : '@${p.username}', style: TextStyle(color: cs.onSurfaceVariant)),
+              if (cargos.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 6, children: [for (final c in cargos) EtiquetaCargoPersonalizado(c)]),
+              ],
               const SizedBox(height: 8),
               Row(children: [
                 SizedBox.square(dimension: 10, child: PontoPresenca(p.presence)),
@@ -310,6 +322,29 @@ class _PerfilSheetState extends State<_PerfilSheet> {
                   }
                 },
         ),
+      if (grupo.pode(Permissao.gerenciarCargos) && grupo.roles.any((r) => r.position < grupo.myRank)) ...[
+        const SizedBox(height: 6),
+        Text('Cargos', style: TextStyle(fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final r in grupo.roles.where((r) => r.position < grupo.myRank))
+            FilterChip(
+              avatar: CircleAvatar(backgroundColor: r.color == null ? Colors.grey : Color(r.color!), radius: 6),
+              label: Text(r.name),
+              selected: membro.roleIds.contains(r.id),
+              onSelected: _ocupado
+                  ? null
+                  : (v) {
+                      final novos = {...membro.roleIds};
+                      v ? novos.add(r.id) : novos.remove(r.id);
+                      _fazer(() => social.groupAction('set_member_roles', {'conversationId': id, 'userKey': membro.userKey, 'roleIds': novos.toList()}),
+                          fechar: true);
+                    },
+            ),
+        ]),
+        const SizedBox(height: 6),
+      ],
+      if (grupo.pode(Permissao.expulsar))
       ListTile(
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.person_remove_outlined, color: corAusente),
@@ -323,6 +358,7 @@ class _PerfilSheetState extends State<_PerfilSheet> {
                 }
               },
       ),
+      if (grupo.pode(Permissao.banir))
       ListTile(
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.gavel_rounded, color: corOcupado),
@@ -524,6 +560,29 @@ class _VoceAbaState extends State<VoceAba> {
     await _salvar(() => social.updateProfile({campo: v.trim()}));
   }
 
+  /// Fundo do perfil: cor ou foto (#4, #5).
+  Future<void> _fundo() async {
+    final me = social.me!;
+    final op = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.palette_outlined), title: const Text('Escolher cor'), onTap: () => Navigator.pop(ctx, 'cor')),
+          ListTile(leading: const Icon(Icons.image_outlined), title: const Text('Usar uma foto'), onTap: () => Navigator.pop(ctx, 'foto')),
+          if (me.bannerPath != null)
+            ListTile(leading: const Icon(Icons.hide_image_outlined, color: corOcupado), title: const Text('Tirar a foto'), onTap: () => Navigator.pop(ctx, 'tirar')),
+        ]),
+      ),
+    );
+    if (op == 'cor') await _cor();
+    if (op == 'tirar') await _salvar(() => social.setBanner(null));
+    if (op == 'foto') {
+      final b = await escolherImagem();
+      if (b != null) await _salvar(() => social.setBanner(b));
+    }
+  }
+
   Future<void> _cor() async {
     final cor = await showDialog<int>(
       context: context,
@@ -555,7 +614,17 @@ class _VoceAbaState extends State<VoceAba> {
           SizedBox(
             height: 170,
             child: Stack(clipBehavior: Clip.none, children: [
-              InkWell(onTap: _cor, child: Container(height: 116, color: banner, alignment: Alignment.topRight, padding: const EdgeInsets.all(10), child: const Icon(Icons.palette_outlined, color: Colors.white70))),
+              InkWell(
+                onTap: _fundo,
+                child: FundoSocial(
+                  path: me.bannerPath,
+                  cor: banner,
+                  altura: 116,
+                  child: const Align(
+                      alignment: Alignment.topRight,
+                      child: Padding(padding: EdgeInsets.all(10), child: Icon(Icons.wallpaper_rounded, color: Colors.white70))),
+                ),
+              ),
               Positioned(
                 left: 16,
                 top: 64,

@@ -1,12 +1,13 @@
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../atualizacao.dart';
 import '../config.dart';
+import '../desktop/janela.dart';
+import '../plataforma.dart';
 import '../util.dart';
 
 /// Pergunta se quer atualizar. [automatico]: veio da verificacao ao abrir o app
@@ -34,8 +35,12 @@ Future<void> oferecerAtualizacao(BuildContext context, AtualizacaoInfo info, {bo
                 )),
           ],
           const SizedBox(height: 14),
-          const Text('O app baixa a atualização e o Android pede para confirmar a instalação. '
-              'Seus dados e o login continuam.'),
+          Text(switch (Plataforma.nome) {
+            'Windows' => 'O app baixa a atualização, instala e abre de novo sozinho. Seus dados e o login continuam.',
+            'Linux' || 'macOS' => 'Vou abrir a página da versão nova para você baixar. Seus dados e o login continuam.',
+            _ => 'O app baixa a atualização e o Android pede para confirmar a instalação. '
+                'Seus dados e o login continuam.',
+          }),
         ]),
       ),
       actions: [
@@ -57,6 +62,11 @@ Future<void> oferecerAtualizacao(BuildContext context, AtualizacaoInfo info, {bo
 }
 
 Future<void> baixarEInstalar(BuildContext context, AtualizacaoInfo info) async {
+  if (Plataforma.desktop && !Platform.isWindows) {
+    // Linux e macOS: sem instalador automático por enquanto, baixa pelo navegador
+    await launchUrl(Uri.parse(info.apkUrl), mode: LaunchMode.externalApplication);
+    return;
+  }
   final progresso = ValueNotifier<(int, int?)>((0, null));
   var cancelado = false;
   final nav = Navigator.of(context, rootNavigator: true);
@@ -101,13 +111,21 @@ Future<void> baixarEInstalar(BuildContext context, AtualizacaoInfo info) async {
       Directory('${pasta.path}/atualizacao'),
       progresso: (r, t) => progresso.value = (r, t),
       cancelado: () => cancelado,
+      nome: Platform.isWindows ? 'AVA-Sync-Setup.exe' : 'AVA-Sync.apk',
     );
     nav.pop();
-    final r = await OpenFilex.open(apk.path, type: 'application/vnd.android.package-archive');
-    if (r.type != ResultType.done) {
-      erro = r.type == ResultType.permissionDenied
+    if (Platform.isWindows) {
+      // instalador silencioso por cima da versão atual; ele abre o app de novo no fim
+      await Process.start(apk.path, const ['/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART'],
+          mode: ProcessStartMode.detached);
+      await JanelaDesktop.instancia.sair();
+      return;
+    }
+    final r = await abrirNoSistema(apk.path, tipo: 'application/vnd.android.package-archive');
+    if (r != null) {
+      erro = r == 'permissao'
           ? 'Permita que o AVA Sync instale apps (Configurações > Apps > AVA Sync > Instalar apps desconhecidos) e tente de novo.'
-          : 'Não consegui abrir o instalador: ${r.message}';
+          : 'Não consegui abrir o instalador: $r';
     }
   } on DownloadCancelado {
     nav.pop();

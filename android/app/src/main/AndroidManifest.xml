@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
     <application
         android:label="${appLabel}"
-        android:name="${applicationName}"
+        android:name=".AvaSyncApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
@@ -34,6 +34,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- push do Social (Firebase): acorda o app para buscar e mostrar a mensagem -->
+        <service android:name=".PushService" android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+            </intent-filter>
+        </service>
         <!-- lembretes de prazo agendados (flutter_local_notifications) -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">

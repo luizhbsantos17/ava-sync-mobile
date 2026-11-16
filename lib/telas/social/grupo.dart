@@ -304,6 +304,8 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
     final nome = TextEditingController(text: canal?.name ?? '');
     final topico = TextEditingController(text: canal?.topic ?? '');
     var soAdmins = canal?.onlyAdmins ?? false;
+    String? categoria = canal?.categoryId;
+    final categorias = _i?.categories ?? const <SocialCategory>[];
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -312,10 +314,20 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(controller: nome, autofocus: true, maxLength: 32, decoration: const InputDecoration(labelText: 'Nome', prefixIcon: Icon(Icons.tag_rounded))),
             TextField(controller: topico, maxLength: 200, decoration: const InputDecoration(labelText: 'Tópico (opcional)')),
+            if (categorias.isNotEmpty)
+              DropdownButtonFormField<String?>(
+                initialValue: categorias.any((k) => k.id == categoria) ? categoria : null,
+                decoration: const InputDecoration(labelText: 'Categoria'),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('Sem categoria')),
+                  for (final k in categorias) DropdownMenuItem<String?>(value: k.id, child: Text(k.name)),
+                ],
+                onChanged: (v) => set(() => categoria = v),
+              ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Canal de avisos'),
-              subtitle: const Text('Só administradores escrevem'),
+              subtitle: const Text('Só quem tem permissão escreve'),
               value: soAdmins,
               onChanged: (v) => set(() => soAdmins = v),
             ),
@@ -329,8 +341,10 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
     );
     if (ok == true && nome.text.trim().isNotEmpty) {
       await _fazer(() => canal == null
-          ? social.groupAction('create_channel', {'conversationId': _id, 'name': nome.text, 'topic': topico.text, 'onlyAdmins': soAdmins})
-          : social.groupAction('update_channel', {'channelId': canal.id, 'name': nome.text, 'topic': topico.text, 'onlyAdmins': soAdmins}));
+          ? social.groupAction('create_channel',
+              {'conversationId': _id, 'name': nome.text, 'topic': topico.text, 'onlyAdmins': soAdmins, 'categoryId': categoria})
+          : social.groupAction('update_channel',
+              {'channelId': canal.id, 'name': nome.text, 'topic': topico.text, 'onlyAdmins': soAdmins, 'categoryId': categoria}));
     }
     nome.dispose();
     topico.dispose();
@@ -343,6 +357,119 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
     await _fazer(() => social.groupAction('reorder_channels', {'conversationId': _id, 'channelIds': [for (final x in canais) x.id]}));
   }
 
+  // ------------------------------------------------------------ categorias (#2)
+  Future<void> _categoria({SocialCategory? cat}) async {
+    final v = await pedirTexto(context,
+        titulo: cat == null ? 'Nova categoria' : 'Renomear categoria',
+        rotulo: 'Nome (ex.: Estudo)',
+        inicial: cat?.name ?? '',
+        max: 32,
+        botao: cat == null ? 'Criar' : 'Salvar');
+    if (v == null || v.trim().isEmpty) return;
+    await _fazer(() => cat == null
+        ? social.groupAction('create_category', {'conversationId': _id, 'name': v.trim()})
+        : social.groupAction('update_category', {'categoryId': cat.id, 'name': v.trim()}));
+  }
+
+  Future<void> _moverCategoria(int de, int para) async {
+    final cats = [..._i!.categories];
+    final c = cats.removeAt(de);
+    cats.insert(para, c);
+    await _fazer(() async {
+      for (var k = 0; k < cats.length; k++) {
+        await social.groupAction('update_category', {'categoryId': cats[k].id, 'position': k}, reload: k == cats.length - 1);
+      }
+    });
+  }
+
+  // ------------------------------------------------------------ cargos (#2)
+  Future<void> _cargo({SocialRole? cargo}) async {
+    final i = _i!;
+    final nome = TextEditingController(text: cargo?.name ?? '');
+    int? cor = cargo?.color ?? coresBanner.first;
+    final perms = {...?cargo?.permissions};
+    var marcavel = cargo?.mentionable ?? true;
+    var separado = cargo?.hoist ?? true;
+    final op = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          title: Text(cargo == null ? 'Novo cargo' : 'Editar cargo'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                TextField(controller: nome, autofocus: cargo == null, maxLength: 32, decoration: const InputDecoration(labelText: 'Nome do cargo')),
+                const Text('Cor', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final c in coresBanner)
+                    InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => set(() => cor = c),
+                      child: CircleAvatar(radius: 16, backgroundColor: Color(c), child: cor == c ? const Icon(Icons.check, size: 16, color: Colors.white) : null),
+                    ),
+                ]),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Qualquer um pode marcar'),
+                  subtitle: Text('@${nome.text.isEmpty ? 'cargo' : nome.text} avisa todo mundo que tem o cargo'),
+                  value: marcavel,
+                  onChanged: (v) => set(() => marcavel = v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Mostrar separado na lista de membros'),
+                  value: separado,
+                  onChanged: (v) => set(() => separado = v),
+                ),
+                const SizedBox(height: 4),
+                const Text('Permissões', style: TextStyle(fontWeight: FontWeight.w700)),
+                for (final p in Permissao.values)
+                  // ninguém dá uma permissão que não tem (o servidor confere)
+                  if (i.pode(p))
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(p.rotulo),
+                      subtitle: p.descricao.isEmpty ? null : Text(p.descricao),
+                      value: perms.contains(p.id),
+                      onChanged: (v) => set(() => v == true ? perms.add(p.id) : perms.remove(p.id)),
+                    ),
+              ]),
+            ),
+          ),
+          actions: [
+            if (cargo != null) TextButton(onPressed: () => Navigator.pop(ctx, 'apagar'), child: const Text('Apagar', style: TextStyle(color: corOcupado))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'salvar'), child: Text(cargo == null ? 'Criar' : 'Salvar')),
+          ],
+        ),
+      ),
+    );
+    final campos = {'name': nome.text.trim(), 'color': cor, 'permissions': perms.toList(), 'mentionable': marcavel, 'hoist': separado};
+    nome.dispose();
+    if (op == 'apagar' && cargo != null) {
+      if (!mounted) return;
+      if (await confirmar(context, titulo: 'Apagar o cargo ${cargo.name}?', texto: 'Quem tem este cargo perde as permissões dele.', botao: 'Apagar', perigo: true)) {
+        await _fazer(() => social.groupAction('delete_role', {'roleId': cargo.id}));
+      }
+    }
+    if (op == 'salvar' && (campos['name'] as String).isNotEmpty) {
+      await _fazer(() => cargo == null
+          ? social.groupAction('create_role', {'conversationId': _id, ...campos})
+          : social.groupAction('update_role', {'roleId': cargo.id, ...campos}));
+    }
+  }
+
+  Future<void> _moverCargo(int de, int para) async {
+    final roles = [..._i!.roles];
+    final r = roles.removeAt(de);
+    roles.insert(para, r);
+    await _fazer(() => social.groupAction('reorder_roles', {'conversationId': _id, 'roleIds': [for (final x in roles) x.id]}));
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -351,7 +478,9 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
       return Scaffold(appBar: AppBar(), body: Center(child: _erro == null ? const CircularProgressIndicator() : Text(_erro!)));
     }
     final c = i.conversation;
-    final admin = i.myRole.gerencia;
+    final admin = i.pode(Permissao.gerenciarGrupo);
+    final podeCanais = i.pode(Permissao.gerenciarCanais);
+    final podeCargos = i.pode(Permissao.gerenciarCargos);
     final dono = i.myRole == Cargo.owner;
     final online = i.members.where((m) => m.profile.online).length;
     return Scaffold(
@@ -434,6 +563,54 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.wallpaper_rounded),
+              title: const Text('Fundo do grupo'),
+              subtitle: Text(c.bannerPath == null ? 'Sem foto (usa a cor do grupo)' : 'Foto escolhida'),
+              trailing: c.bannerPath == null
+                  ? null
+                  : SizedBox(width: 72, child: FundoSocial(path: c.bannerPath, cor: cs.primary, altura: 40, raio: BorderRadius.circular(8))),
+              onTap: () async {
+                final op = await showModalBottomSheet<String>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (ctx) => SafeArea(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      ListTile(leading: const Icon(Icons.image_outlined), title: const Text('Escolher foto'), onTap: () => Navigator.pop(ctx, 'foto')),
+                      if (c.bannerPath != null)
+                        ListTile(leading: const Icon(Icons.hide_image_outlined), title: const Text('Tirar a foto'), onTap: () => Navigator.pop(ctx, 'tirar')),
+                    ]),
+                  ),
+                );
+                if (op == 'tirar') await _fazer(() => social.setGroupBanner(_id, null));
+                if (op == 'foto') {
+                  final b = await escolherImagem();
+                  if (b != null) await _fazer(() => social.setGroupBanner(_id, b));
+                }
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.palette_outlined, color: c.accentColor == null ? null : Color(c.accentColor!)),
+              title: const Text('Cor do grupo'),
+              subtitle: Text(c.accentColor == null ? 'Automática' : 'Personalizada'),
+              onTap: () async {
+                final cor = await showDialog<int>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Cor do grupo'),
+                    content: Wrap(spacing: 10, runSpacing: 10, children: [
+                      for (final k in coresBanner)
+                        InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => Navigator.pop(ctx, k),
+                          child: CircleAvatar(radius: 22, backgroundColor: Color(k), child: c.accentColor == k ? const Icon(Icons.check, color: Colors.white) : null),
+                        ),
+                    ]),
+                  ),
+                );
+                if (cor != null) await _fazer(() => social.groupAction('update_group', {'conversationId': _id, 'accentColor': cor}));
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.description_outlined),
               title: const Text('Descrição'),
               subtitle: Text(c.description ?? 'Sem descrição', maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -443,13 +620,17 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
               },
             ),
           ],
-          SecaoTitulo('Canais · ${i.channels.length}', acao: admin ? IconButton(tooltip: 'Criar canal', icon: const Icon(Icons.add_rounded), onPressed: _canal) : null),
+          SecaoTitulo('Canais · ${i.channels.length}', acao: podeCanais ? IconButton(tooltip: 'Criar canal', icon: const Icon(Icons.add_rounded), onPressed: _canal) : null),
           for (var k = 0; k < i.channels.length; k++)
             ListTile(
               leading: Icon(i.channels[k].onlyAdmins ? Icons.campaign_outlined : Icons.tag_rounded),
               title: Text(i.channels[k].name),
-              subtitle: i.channels[k].topic == null ? null : Text(i.channels[k].topic!, maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: !admin
+              subtitle: () {
+                final cat = i.categories.where((x) => x.id == i.channels[k].categoryId).firstOrNull;
+                final partes = [if (cat != null) cat.name, if (i.channels[k].topic != null) i.channels[k].topic!];
+                return partes.isEmpty ? null : Text(partes.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis);
+              }(),
+              trailing: !podeCanais
                   ? null
                   : PopupMenuButton<String>(
                       onSelected: (op) async {
@@ -474,16 +655,111 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
                       ],
                     ),
             ),
+          if (c.tipo != TipoConversa.direta && (podeCanais || i.categories.isNotEmpty)) ...[
+            SecaoTitulo('Categorias de canais · ${i.categories.length}',
+                acao: podeCanais ? IconButton(tooltip: 'Nova categoria', icon: const Icon(Icons.create_new_folder_outlined), onPressed: _categoria) : null),
+            if (i.categories.isEmpty)
+              ListTile(
+                leading: const Icon(Icons.folder_outlined),
+                title: const Text('Nenhuma categoria'),
+                subtitle: const Text('Separe os canais em grupos, como "Canais gerais" e "Estudo"'),
+                onTap: podeCanais ? _categoria : null,
+              ),
+            for (var k = 0; k < i.categories.length; k++)
+              ListTile(
+                leading: const Icon(Icons.folder_outlined),
+                title: Text(i.categories[k].name),
+                subtitle: Text('${i.channels.where((x) => x.categoryId == i.categories[k].id).length} canal(is)'),
+                trailing: !podeCanais
+                    ? null
+                    : PopupMenuButton<String>(
+                        onSelected: (op) async {
+                          switch (op) {
+                            case 'renomear':
+                              await _categoria(cat: i.categories[k]);
+                            case 'subir':
+                              await _moverCategoria(k, k - 1);
+                            case 'descer':
+                              await _moverCategoria(k, k + 1);
+                            case 'apagar':
+                              if (await confirmar(context,
+                                  titulo: 'Apagar a categoria ${i.categories[k].name}?',
+                                  texto: 'Os canais continuam, só ficam sem categoria.',
+                                  botao: 'Apagar',
+                                  perigo: true)) {
+                                await _fazer(() => social.groupAction('delete_category', {'categoryId': i.categories[k].id}));
+                              }
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(value: 'renomear', child: Text('Renomear')),
+                          if (k > 0) const PopupMenuItem(value: 'subir', child: Text('Mover para cima')),
+                          if (k < i.categories.length - 1) const PopupMenuItem(value: 'descer', child: Text('Mover para baixo')),
+                          const PopupMenuItem(value: 'apagar', child: Text('Apagar', style: TextStyle(color: corOcupado))),
+                        ],
+                      ),
+              ),
+          ],
+          if (c.tipo != TipoConversa.direta && (podeCargos || i.roles.isNotEmpty)) ...[
+            SecaoTitulo('Cargos · ${i.roles.length}',
+                acao: podeCargos ? IconButton(tooltip: 'Novo cargo', icon: const Icon(Icons.add_moderator_outlined), onPressed: _cargo) : null),
+            if (i.roles.isEmpty)
+              ListTile(
+                leading: const Icon(Icons.shield_outlined),
+                title: const Text('Nenhum cargo personalizado'),
+                subtitle: const Text('Crie cargos com cor, permissões e @menção (ex.: Monitor, Representante)'),
+                onTap: podeCargos ? _cargo : null,
+              ),
+            for (var k = 0; k < i.roles.length; k++)
+              ListTile(
+                leading: Icon(Icons.shield_rounded, color: i.roles[k].color == null ? null : Color(i.roles[k].color!)),
+                title: Text(i.roles[k].name),
+                subtitle: Text([
+                  '${i.members.where((m) => m.roleIds.contains(i.roles[k].id)).length} pessoa(s)',
+                  if (i.roles[k].permissions.isNotEmpty) '${i.roles[k].permissions.length} permissão(ões)',
+                  if (i.roles[k].mentionable) 'marcável',
+                ].join(' · ')),
+                // só cargos abaixo do seu podem ser editados (hierarquia)
+                onTap: podeCargos && i.roles[k].position < i.myRank ? () => _cargo(cargo: i.roles[k]) : null,
+                trailing: !podeCargos || i.roles[k].position >= i.myRank
+                    ? null
+                    : PopupMenuButton<String>(
+                        onSelected: (op) async {
+                          switch (op) {
+                            case 'subir':
+                              await _moverCargo(k, k - 1);
+                            case 'descer':
+                              await _moverCargo(k, k + 1);
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          if (k > 0 && i.roles[k - 1].position < i.myRank) const PopupMenuItem(value: 'subir', child: Text('Subir na hierarquia')),
+                          if (k < i.roles.length - 1) const PopupMenuItem(value: 'descer', child: Text('Descer na hierarquia')),
+                        ],
+                      ),
+              ),
+          ],
           SecaoTitulo('Membros · ${i.members.length}'),
-          for (final m in ([...i.members]..sort((a, b) => b.role.nivel != a.role.nivel ? b.role.nivel.compareTo(a.role.nivel) : a.nome.toLowerCase().compareTo(b.nome.toLowerCase()))))
+          for (final m in ([...i.members]
+            ..sort((a, b) => i.rankDe(b) != i.rankDe(a) ? i.rankDe(b).compareTo(i.rankDe(a)) : a.nome.toLowerCase().compareTo(b.nome.toLowerCase()))))
             ListTile(
               leading: SocialAvatar(profile: m.profile, size: 38),
-              title: Row(children: [Flexible(child: Text(m.nome, maxLines: 1, overflow: TextOverflow.ellipsis)), const SizedBox(width: 6), EtiquetaCargo(m.role)]),
+              title: Row(children: [
+                Flexible(
+                  child: Text(m.nome,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: i.corDe(m) == null ? null : Color(i.corDe(m)!), fontWeight: i.corDe(m) == null ? null : FontWeight.w700)),
+                ),
+                const SizedBox(width: 6),
+                if (m.role != Cargo.member) EtiquetaCargo(m.role) else if (i.cargosDe(m).isNotEmpty) EtiquetaCargoPersonalizado(i.cargosDe(m).first),
+              ]),
               subtitle: Text('@${m.profile.username}', maxLines: 1),
               onTap: () => mostrarPerfil(context, m.userKey, grupo: i, mudou: _carregar),
             ),
-          if (admin) ...[
+          if (admin || i.pode(Permissao.banir)) ...[
             const SecaoTitulo('Moderação'),
+            if (admin)
             ListTile(
               leading: const Icon(Icons.link_off_rounded),
               title: const Text('Revogar todos os convites'),
@@ -494,6 +770,7 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
                 }
               },
             ),
+            if (i.pode(Permissao.banir))
             ExpansionTile(
               leading: const Icon(Icons.gavel_rounded),
               title: Text('Banidos · ${i.bans.length}'),

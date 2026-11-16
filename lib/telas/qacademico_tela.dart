@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import '../navegador_web.dart';
 
 import '../config.dart';
 import '../estado_app.dart';
@@ -53,23 +53,21 @@ Future<void> guardarCredenciaisQA(ResultadoQA r,
 /// os proprios scripts, inclusive a protecao anti-robo. Se o site pedir verificacao,
 /// a coleta para e a pessoa resolve na tela do Q-Academico. O app nunca tenta contornar.
 class ColetorQA {
-  final WebViewController web = WebViewController();
+  late final NavegadorWeb web;
   Completer<String>? _carregou;
   bool _ocupado = false;
 
   ColetorQA() {
-    web
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageFinished: (url) {
-          final c = _carregou;
-          if (c != null && !c.isCompleted) c.complete(url);
-        },
-        onWebResourceError: (e) {
-          final c = _carregou;
-          if (e.isForMainFrame == true && c != null && !c.isCompleted) c.completeError(Exception(e.description));
-        },
-      ));
+    web = NavegadorWeb(
+      aoTerminar: (url) {
+        final c = _carregou;
+        if (c != null && !c.isCompleted) c.complete(url);
+      },
+      aoFalhar: (erro) {
+        final c = _carregou;
+        if (c != null && !c.isCompleted) c.completeError(Exception(erro));
+      },
+    );
   }
 
   static String get _base {
@@ -98,10 +96,10 @@ class ColetorQA {
     return url;
   }
 
-  Future<void> abrir(String url) => _esperar(() => web.loadRequest(Uri.parse(url)));
+  Future<void> abrir(String url) => _esperar(() => web.carregar(url));
 
   Future<String> _js(String codigo) async {
-    final r = await web.runJavaScriptReturningResult(codigo);
+    final r = await web.rodarJsComResultado(codigo);
     if (r is String) {
       if (r.length >= 2 && r.startsWith('"')) {
         try {
@@ -117,7 +115,7 @@ class ColetorQA {
 
   /// login | verificacao | pagina
   Future<String> _estado() async {
-    final url = (await web.currentUrl() ?? '').toLowerCase();
+    final url = (await web.urlAtual() ?? '').toLowerCase();
     if (url.contains('perfdrive') || url.contains('captcha')) return 'verificacao';
     final r = await _js('''(function(){
       if (document.forms['frmLogin'] || document.getElementById('txtSenha')) return 'login';
@@ -132,7 +130,7 @@ class ColetorQA {
   /// (como um gerenciador de senhas faria). A pagina criptografa e envia.
   Future<void> entrar(String login, String senha) async {
     final l = jsonEncode(login), s = jsonEncode(senha);
-    await _esperar(() => web.runJavaScript('''(function(){
+    await _esperar(() => web.rodarJs('''(function(){
       var f = document.forms['frmLogin'];
       var u = document.getElementById('txtLogin') || (f && f.LOGIN);
       var p = document.getElementById('txtSenha') || (f && f.SENHA);
@@ -235,6 +233,7 @@ class _ColetorOcultoState extends State<ColetorOculto> {
   @override
   void initState() {
     super.initState();
+    if (!NavegadorWeb.suportado) return;
     app.atualizarAcademico = () async {
       final c = _c ??= ColetorQA();
       if (mounted) setState(() {});
@@ -246,6 +245,7 @@ class _ColetorOcultoState extends State<ColetorOculto> {
   @override
   void dispose() {
     app.atualizarAcademico = null;
+    _c?.web.descartar();
     super.dispose();
   }
 
@@ -257,18 +257,37 @@ class _ColetorOcultoState extends State<ColetorOculto> {
         top: 0,
         width: 1,
         height: 1,
-        child: c == null ? const SizedBox.shrink() : IgnorePointer(child: WebViewWidget(controller: c.web)));
+        child: c == null ? const SizedBox.shrink() : IgnorePointer(child: c.web.widget()));
   }
 }
 
 /// Tela do Q-Academico: o site de verdade, com os campos de login do app em cima.
-class QAcademicoTela extends StatefulWidget {
+class QAcademicoTela extends StatelessWidget {
   const QAcademicoTela({super.key});
   @override
-  State<QAcademicoTela> createState() => _QAcademicoTelaState();
+  Widget build(BuildContext context) {
+    if (NavegadorWeb.suportado) return const _QAcademicoNavegador();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Q-Acadêmico')),
+      body: const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text('A leitura do Q-Acadêmico ainda não funciona nesta plataforma. '
+              'Use o app no celular, no Windows ou no macOS para importar notas, faltas e horário.',
+              textAlign: TextAlign.center),
+        ),
+      ),
+    );
+  }
 }
 
-class _QAcademicoTelaState extends State<QAcademicoTela> {
+class _QAcademicoNavegador extends StatefulWidget {
+  const _QAcademicoNavegador();
+  @override
+  State<_QAcademicoNavegador> createState() => _QAcademicoTelaState();
+}
+
+class _QAcademicoTelaState extends State<_QAcademicoNavegador> {
   final _c = ColetorQA();
   final _login = TextEditingController(text: Cfg.qaLogin);
   final _senha = TextEditingController();
@@ -288,6 +307,14 @@ class _QAcademicoTelaState extends State<QAcademicoTela> {
       }
     });
     _c.abrir(ColetorQA.urlLogin).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    _c.web.descartar();
+    _login.dispose();
+    _senha.dispose();
+    super.dispose();
   }
 
   Future<void> _importar() async {
@@ -323,7 +350,7 @@ class _QAcademicoTelaState extends State<QAcademicoTela> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Q-Acadêmico'), actions: [
-        IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: () => _c.web.reload()),
+        IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: () => _c.web.recarregar()),
       ]),
       body: Column(children: [
         Padding(
@@ -368,7 +395,7 @@ class _QAcademicoTelaState extends State<QAcademicoTela> {
           ]),
         ),
         const Divider(height: 1),
-        Expanded(child: WebViewWidget(controller: _c.web)),
+        Expanded(child: _c.web.widget()),
       ]),
     );
   }

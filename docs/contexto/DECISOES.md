@@ -11,6 +11,54 @@ Formato:
 **Consequências:** ... (opcional)
 ```
 
+## 2026-11-16 — Cargos personalizados ao lado de dono/admin
+**Decisão:** dono e admin (`social_members.role`) continuam no topo e têm todas as
+permissões. Cargos personalizados (`social_roles`) têm `position` (maior = mais alto),
+cor, permissões em texto (`gerenciar_grupo`, `expulsar`...) e podem ser vários por pessoa
+(`social_member_roles`). Quem tem `gerenciar_cargos` só mexe em cargos abaixo do seu e
+não dá permissão que não tem; remover/banir/apagar seguem a mesma hierarquia.
+Menção a cargo é `role:<id>` em `mentions`; o app escreve `@apelido_do_cargo`.
+**Por quê:** issue #2 pede cargos como no Discord sem quebrar grupos e apps já existentes.
+**Consequências:** o servidor confere tudo em `poder()`/`requirePerm()`; o app só esconde
+botões. Eventos de amizade, grupo e cargo ficam em `social_events` e vão no `inbox`/push.
+
+## 2026-11-16 — Push do Android pelo Firebase, só em código nativo
+**Decisão:** app fechado no Android recebe aviso pelo Firebase Cloud Messaging. O servidor
+manda só `{tipo, conversa, canal}`; o app acorda (`PushService.kt` sobe um Flutter sem tela
+com `aoReceberPush`) e monta a notificação decifrando no aparelho. Firebase configurado por
+código com valores `FCM_*` do build, sem `google-services.json` nem pacotes Flutter do Firebase.
+**Por quê:** o dono escolheu Firebase em vez de conexão permanente (bateria, ícone fixo,
+celulares que matam o app). Os pacotes `firebase_core`/`firebase_messaging` baixariam o SDK
+C++ do Firebase no build do Windows; o nativo só existe no Android.
+**Consequências:** sem os secrets `FCM_*` o APK sai sem push (tudo funciona, só demora).
+O Google vê que existe aviso para o app, não o conteúdo. Tokens inválidos são apagados
+quando o Firebase responde UNREGISTERED.
+
+## 2026-11-16 — Notificação do Social em tempo real por long polling da caixa de entrada
+**Decisão:** ação `inbox` na Edge Function segura a chamada (até 20 s) até chegar mensagem
+de outra pessoa numa conversa não silenciada. O app (`EscutaSocial`) chama em sequência:
+sempre no computador, e no celular com o app aberto. A notificação é montada no aparelho,
+que decifra a mensagem: uma por conversa/canal, com nome e texto, acumulando até ler
+(`Cfg.socialNotifPendentes`), no Android com o estilo de conversa do sistema.
+**Por quê:** o dono quer ver na hora qual mensagem chegou, de quem e em qual grupo. Sem
+Realtime do Supabase (exigiria acesso direto às tabelas, veja a decisão de 2026-11-15).
+**Consequências:** o servidor continua sem ver texto. App fechado no Android ainda depende
+do workmanager (~15 min) até decidir push (FCM) ou conexão permanente.
+
+## 2026-11-16 — App de computador no mesmo projeto Flutter
+**Decisão:** Windows, Linux e macOS saem do mesmo código e do mesmo repositório do Android
+(pastas `windows/`, `linux/`, `macos/`). O que muda por sistema fica isolado em
+`lib/plataforma.dart`, `lib/navegador_web.dart` e `lib/desktop/`. As telas se adaptam pela
+largura da janela (`InicioTela.larguraLarga`), não pelo sistema. O computador sai no mesmo
+workflow, com o mesmo número de build e na mesma release do APK (`desktop.yml`).
+**Por quê:** o dono pediu que atualizações e integrações (AVA, Q-Acadêmico, Social)
+valham para os dois sem trabalho dobrado. App separado obrigaria a copiar cada mudança.
+**Consequências:** no computador não há workmanager: o app fica na bandeja e relógios
+(`SegundoPlanoDesktop`) fazem sync, Social (a cada 1 min), lembretes e atualização.
+`window_manager`/`tray_manager` 0.7/0.9 compilam código nativo até nos testes, então o CI
+do Linux instala GTK/X11 e o Windows precisa do Visual Studio com C++. "Abrir com o sistema"
+foi feito sem pacote (o `launch_at_startup` não resolve com o SDK atual).
+
 ## 2026-11-15 — Social v2: sessão, envelopes, long polling
 **Decisão:** o token do AVA vira uma sessão HMAC de 12 h; chaves das conversas também
 circulam por envelopes X25519 entre aparelhos; mensagens chegam por long polling.
