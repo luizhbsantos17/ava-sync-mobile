@@ -12,4 +12,6 @@ if [ -z "$(printf '%s' "$notas" | tr -d '[:space:]')" ]; then
   echo "CHANGELOG.md não tem notas para a versão $versao." >&2
   exit 1
 fi
-printf '%s\n' "$notas"
+# "@usuário" no texto vira menção a contas do GitHub na release (@usu, @men...).
+# Um espaço invisível depois do @ evita a menção; no app o texto aparece igual.
+printf '%s\n' "$notas" | sed 's/@/@\xE2\x80\x8B/g'
