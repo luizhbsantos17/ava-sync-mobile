@@ -13,6 +13,7 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
 - Perfil com foto e aparência personalizável (temas e JSON).
 - Aba Acadêmico: disciplinas, boletim, horário, faltas restantes e simulador.
 - Limites de faltas para 30/60/90 horas corrigidos para 9/18/27 (aulas de 50 minutos).
+- Testes acadêmicos atualizados para a conversão de horas em aulas, limites e notificações de faltas restantes.
 - Social v2 (estilo Discord): grupos com canais, mensagens diretas, amigos, perfis,
   presença e status, reações, respostas, edição, fixados, anexos cifrados, digitando,
   moderação (admin, dono, remover, banir), convites com validade, notificações.

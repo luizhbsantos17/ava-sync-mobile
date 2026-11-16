@@ -68,23 +68,36 @@ void main() {
   });
 
   group('frequencia', () {
+    for (final (carga, limite) in [(30.0, 9), (60.0, 18), (90.0, 27)]) {
+      test('carga de ${carga}h permite $limite faltas', () {
+        for (final aulas in [null, carga, carga * 60 / 50]) {
+          final d = Disciplina(nome: 'Disciplina exemplo', carga: carga, aulas: aulas, faltas: limite.toDouble());
+          expect(frequencia(d).limite, limite);
+          expect(frequencia(d).restantes, 0);
+          expect(frequencia(d).reprovadoPorFalta, isFalse);
+          d.faltas = limite + 1.0;
+          expect(frequencia(d).reprovadoPorFalta, isTrue);
+        }
+      });
+    }
+
     test('limite de 25% da carga, faltas restantes e dias que ainda pode faltar', () {
       final d = Disciplina(nome: 'BD', carga: 40, faltas: 4);
       final f = frequencia(d, aulasPorDia: 2);
-      expect(f.limite, 10);
-      expect(f.restantes, 6);
-      expect(f.diasRestantes, 3); // cada dia de falta = 2 faltas
-      expect(f.percentual, closeTo(90, 0.01));
+      expect(f.limite, 12); // 40 horas = 48 aulas de 50 minutos
+      expect(f.restantes, 8);
+      expect(f.diasRestantes, 4); // cada dia de falta = 2 faltas
+      expect(f.percentual, closeTo(100 * (1 - 4 / 48), 0.01));
       expect(f.emRisco, isFalse);
       expect(frequencia(Disciplina(nome: 'x', carga: 40, faltas: 9), aulasPorDia: 2).emRisco, isTrue);
-      expect(frequencia(Disciplina(nome: 'x', carga: 40, faltas: 12)).reprovadoPorFalta, isTrue);
+      expect(frequencia(Disciplina(nome: 'x', carga: 40, faltas: 13)).reprovadoPorFalta, isTrue);
     });
 
     test('usa total de aulas quando existe, o % do Q-Academico e a frequencia minima escolhida', () {
       expect(frequencia(Disciplina(nome: 'R', carga: 60, aulas: 72, faltas: 0)).limite, 18);
       final d = Disciplina(nome: 'R', carga: 60, faltas: 8, frequencia: 86.7);
       expect(frequencia(d).percentual, 86.7);
-      expect(frequencia(d, minima: 80).limite, 12);
+      expect(frequencia(d, minima: 80).limite, 14);
     });
   });
 
@@ -152,7 +165,7 @@ void main() {
     final m = mudancasAcademico(antes, depois);
     expect(m, contains('Nota no boletim: Redes de Computadores · 2ª etapa: 9,0'));
     expect(m, contains('Média atualizada: Redes de Computadores: 8,3'));
-    expect(m.any((t) => t.startsWith('Falta registrada: Banco de Dados (10 no total, ainda pode ter 0)')), isTrue);
+    expect(m.any((t) => t.startsWith('Falta registrada: Banco de Dados (10 no total, ainda pode ter 2)')), isTrue);
     expect(mudancasAcademico([], depois), isEmpty); // primeira importacao nao avisa
   });
 
