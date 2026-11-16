@@ -423,6 +423,19 @@ async function unmutedConversations(userId: string) {
   return members.map((m) => String(m.conversation_id));
 }
 
+/// Grupos silenciados e o filtro "me marcou diretamente" (@você ou @cargo seu, sem @todos).
+/// Silenciar tira as mensagens comuns, mas a menção direta continua avisando (#7).
+async function mencoesSilenciadas(userId: string) {
+  const [muted, cargos] = await Promise.all([
+    db(`social_members?user_key=eq.${q(userId)}&muted=eq.true&select=conversation_id`) as Promise<Row[]>,
+    db(`social_member_roles?user_key=eq.${q(userId)}&select=role_id`) as Promise<Row[]>,
+  ]);
+  const ids = muted.map((m) => String(m.conversation_id));
+  const alvos = [userId, ...cargos.map((r) => `role:${r.role_id}`)];
+  const filtro = `mentions=ov.${encodeURIComponent(`{${alvos.map((a) => `"${a.replace(/"/g, "")}"`).join(",")}}`)}`;
+  return { ids, filtro };
+}
+
 /// Mensagens novas (de outras pessoas) depois de `since`, com títulos, canais e perfis
 /// para montar a notificação no aparelho.
 async function eventosDesde(userId: string, since: string) {
@@ -430,17 +443,30 @@ async function eventosDesde(userId: string, since: string) {
 }
 
 async function inboxSince(userId: string, since: string, ids: string[]) {
-  const events = await eventosDesde(userId, since);
-  if (!ids.length) return { messages: [], conversations: [], channels: [], profiles: {}, events };
-  const rows = await db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=${MESSAGE_FIELDS}&order=created_at.desc&limit=30`) as Row[];
+  const [events, sil] = await Promise.all([eventosDesde(userId, since), mencoesSilenciadas(userId)]);
+  const [normais, marcadas] = await Promise.all([
+    ids.length
+      ? db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=${MESSAGE_FIELDS}&order=created_at.desc&limit=30`) as Promise<Row[]>
+      : Promise.resolve([] as Row[]),
+    sil.ids.length
+      ? db(`social_messages?conversation_id=in.(${sil.ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&${sil.filtro}&select=${MESSAGE_FIELDS}&order=created_at.desc&limit=30`) as Promise<Row[]>
+      : Promise.resolve([] as Row[]),
+  ]);
+  const rows = [...normais, ...marcadas].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 30);
+  if (!rows.length) return { messages: [], conversations: [], channels: [], profiles: {}, events };
   const convIds = [...new Set(rows.map((r) => String(r.conversation_id)))];
   const chIds = [...new Set(rows.map((r) => String(r.channel_id)))];
-  const [conversations, channels, profiles] = await Promise.all([
+  // quem foi marcado e quais cargos: o aparelho troca "@ifes_..." pelo nome (#7)
+  const marcados = rows.flatMap((r) => (r.mentions as string[] | null) ?? []);
+  const cargoIds = [...new Set(marcados.filter((m) => m.startsWith("role:")).map((m) => m.slice(5)).filter(isUuid))];
+  const pessoas = marcados.filter((m) => m !== "everyone" && !m.startsWith("role:"));
+  const [conversations, channels, profiles, roles] = await Promise.all([
     convIds.length ? db(`social_conversations?id=in.(${convIds.map(q).join(",")})&select=id,title,group_kind`) : Promise.resolve([]),
     chIds.length ? db(`social_channels?id=in.(${chIds.map(q).join(",")})&select=id,name`) : Promise.resolve([]),
-    profilesByKeys(rows.map((r) => String(r.sender_id))),
+    profilesByKeys([...rows.map((r) => String(r.sender_id)), ...pessoas]),
+    cargoIds.length ? db(`social_roles?id=in.(${cargoIds.map(q).join(",")})&select=id,name`) : Promise.resolve([]),
   ]);
-  return { messages: rows, conversations, channels, profiles, events };
+  return { messages: rows, conversations, channels, profiles, roles, events };
 }
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
@@ -511,9 +537,15 @@ async function nomeDe(userKey: string) {
 }
 
 /// Push para os aparelhos dos outros membros (não silenciados) da conversa.
-async function avisarMembros(conversationId: string, channelId: string, senderId: string) {
+async function avisarMembros(conversationId: string, channelId: string, senderId: string, mentions: string[] = []) {
   if (!pushConfigurado()) return;
-  const membros = await db(`social_members?conversation_id=eq.${q(conversationId)}&user_key=neq.${q(senderId)}&muted=eq.false&select=user_key`) as Row[];
+  const todos = await db(`social_members?conversation_id=eq.${q(conversationId)}&user_key=neq.${q(senderId)}&select=user_key,muted`) as Row[];
+  const cargosMarcados = mentions.filter((m) => m.startsWith("role:")).map((m) => m.slice(5)).filter(isUuid);
+  const comCargo = new Set(cargosMarcados.length
+    ? (await db(`social_member_roles?role_id=in.(${cargosMarcados.map(q).join(",")})&select=user_key`) as Row[]).map((r) => String(r.user_key))
+    : []);
+  // silenciado só recebe se foi marcado diretamente (@você ou @cargo seu), como no Discord (#7)
+  const membros = todos.filter((m) => !m.muted || mentions.includes(String(m.user_key)) || comCargo.has(String(m.user_key)));
   if (!membros.length) return;
   const tokens = await db(`social_push_tokens?user_key=in.(${membros.map((m) => qv(String(m.user_key))).join(",")})&select=token`) as Row[];
   const invalidos = await enviarPush(tokens.map((t) => String(t.token)), { tipo: "social", conversa: conversationId, canal: channelId });
@@ -584,16 +616,19 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
   // notificação aparece em ~1 s. O conteúdo continua cifrado: quem decifra é o aparelho.
   async inbox({ userId, payload }) {
     const since = sinceOf(payload);
-    const ids = await unmutedConversations(userId);
+    const [ids, sil] = await Promise.all([unmutedConversations(userId), mencoesSilenciadas(userId)]);
     const deadline = Date.now() + (payload.wait === false ? 0 : POLL_WAIT_MS);
     while (true) {
-      const [fresh, evs] = await Promise.all([
+      const [fresh, marcada, evs] = await Promise.all([
         ids.length
           ? db(`social_messages?conversation_id=in.(${ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&select=id&limit=1`) as Promise<Row[]>
           : Promise.resolve([] as Row[]),
+        sil.ids.length
+          ? db(`social_messages?conversation_id=in.(${sil.ids.map(q).join(",")})&sender_id=neq.${q(userId)}&deleted_at=is.null&created_at=gt.${q(since)}&${sil.filtro}&select=id&limit=1`) as Promise<Row[]>
+          : Promise.resolve([] as Row[]),
         db(`social_events?user_key=eq.${q(userId)}&created_at=gt.${q(since)}&select=id&limit=1`) as Promise<Row[]>,
       ]);
-      if (fresh.length || evs.length || Date.now() >= deadline) return { ...(await inboxSince(userId, since, ids)), live: true };
+      if (fresh.length || marcada.length || evs.length || Date.now() >= deadline) return { ...(await inboxSince(userId, since, ids)), live: true };
       await sleep(POLL_STEP_MS);
     }
   },
@@ -1288,7 +1323,7 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
         "resolution=merge-duplicates,return=minimal"),
     ]);
     // avisa os celulares dos outros membros sem atrasar a resposta de quem enviou
-    emSegundoPlano(avisarMembros(conversationId, String(ch.id), userId));
+    emSegundoPlano(avisarMembros(conversationId, String(ch.id), userId, mentions));
     return payload.channelId ? { message: { ...rows[0], reactions: [] } } : { ok: true };
   },
 

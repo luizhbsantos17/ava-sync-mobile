@@ -57,6 +57,16 @@ class Trecho {
 final _url = RegExp(r'https?://[^\s<>()]+[^\s<>().,;:!?"\x27]', caseSensitive: false);
 final _mencao = RegExp(r'@([a-zA-Z0-9_.]{2,24})');
 
+/// Troca cada "@usuário" pelo nome que aparece no chat ("@ifes_3f2a1b_1234" vira
+/// "@Mikame"; "@everyone" vira "@todos"). [nome] devolve null para deixar como está.
+/// Usado na notificação, na busca e na prévia da conversa (#7).
+String trocarMencoes(String texto, String? Function(String usuario) nome) => texto.replaceAllMapped(_mencao, (m) {
+      final u = m.group(1)!.toLowerCase();
+      if (u == 'everyone' || u == 'todos') return '@todos';
+      final n = nome(u);
+      return n == null ? m.group(0)! : '@$n';
+    });
+
 List<Trecho> formatar(String texto) {
   final out = <Trecho>[];
   // blocos de código primeiro: nada dentro deles é formatado
@@ -220,4 +230,18 @@ bool soEmojis(String texto) {
     if (!(r >= 0x1F1E6 && r <= 0x1F1FF)) n++;
   }
   return n >= 1 && n <= 3;
+}
+
+/// "@" de um cargo: o nome em minúsculas, sem acento e com _ no lugar de espaço
+/// ("Monitor de Cálculo" vira @monitor_de_calculo).
+String apelidoCargo(String nome) {
+  const de = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
+  const para = 'aaaaaeeeeiiiiooooouuuucn';
+  final b = StringBuffer();
+  for (final ch in nome.toLowerCase().split('')) {
+    final i = de.indexOf(ch);
+    b.write(i >= 0 ? para[i] : ch);
+  }
+  final t = b.toString().replaceAll(RegExp(r'[^a-z0-9_.]+'), '_').replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_|_$'), '');
+  return t.isEmpty ? 'cargo' : (t.length > 24 ? t.substring(0, 24) : t);
 }

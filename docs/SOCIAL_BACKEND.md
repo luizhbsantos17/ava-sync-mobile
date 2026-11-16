@@ -119,4 +119,8 @@ Mensagem sem canal cai no primeiro canal da conversa (gatilho `social_message_de
   `banner_color` virou `bigint` (cor 0xAARRGGBB estourava o `integer`, issue #5).
 - `social_events` (amizade_pedido, amizade_aceita, adicionado, removido, banido, cargo):
   voltam em `inbox`/`notifications` como `events` e acordam o celular por push.
+- Menções (#7): `inbox`/`notifications` trazem também `roles` (nomes dos cargos marcados) e
+  os perfis de quem foi marcado, para o aparelho trocar "@usuário" pelo nome. Em grupo
+  silenciado, só mensagens com `mentions` ∩ {você, role:<seus cargos>} passam (filtro `ov`),
+  também no push.
 

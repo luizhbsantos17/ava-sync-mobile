@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import 'api.dart';
+import 'formatacao.dart';
 import 'models.dart';
 import 'service.dart';
 import 'supabase_crypto.dart';
@@ -379,12 +380,19 @@ class ChannelFeed extends ChangeNotifier {
   }
 
   /// Busca no que já foi carregado (o servidor não consegue ler as mensagens).
-  List<SocialMessage> search(String query) {
-    final q = query.trim().toLowerCase();
+  /// [nome] troca "@usuário" pelo nome que aparece, para achar "Mikame" e não só
+  /// "@ifes_..." (#7).
+  List<SocialMessage> search(String query, {String? Function(String usuario)? nome}) {
+    final q = query.trim().toLowerCase().replaceFirst(RegExp(r'^@'), '');
     if (q.isEmpty) return const [];
-    return messages.reversed
-        .where((m) => !m.deleted && (m.text.toLowerCase().contains(q) || m.attachments.any((a) => a.name.toLowerCase().contains(q))))
-        .toList();
+    bool acha(SocialMessage m) {
+      final t = m.text.toLowerCase();
+      if (t.contains(q)) return true;
+      if (nome != null && trocarMencoes(m.text, nome).toLowerCase().contains(q)) return true;
+      return m.attachments.any((a) => a.name.toLowerCase().contains(q));
+    }
+
+    return messages.reversed.where((m) => !m.deleted && acha(m)).toList();
   }
 
   void _notify() {

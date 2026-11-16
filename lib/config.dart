@@ -85,6 +85,13 @@ class Cfg {
   static Future<void> setSocialNotifIds(List<String> v) =>
       _p.setStringList('social_notif_ids', v.length > 300 ? v.sublist(v.length - 300) : v);
 
+  /// Minha chave no Social e meus cargos por grupo: para reconhecer "me marcou" (#7)
+  /// também no segundo plano, sem a tela aberta.
+  static String get socialMeuId => _p.getString('social_meu_id') ?? '';
+  static Future<void> setSocialMeuId(String v) => _p.setString('social_meu_id', v);
+  static Map<String, dynamic> get socialMeusCargos => _json('social_meus_cargos');
+  static Future<void> setSocialMeusCargos(Map<String, List<String>> v) => _p.setString('social_meus_cargos', jsonEncode(v));
+
   static String get socialNotifPendentes => _p.getString('social_notif_pend') ?? '{}';
   static Future<void> setSocialNotifPendentes(String v) => _p.setString('social_notif_pend', v);
   static List<String> get socialEmojisRecentes => _p.getStringList('social_emojis') ?? const ['👍', '❤️', '😂', '😮', '😢', '🔥'];

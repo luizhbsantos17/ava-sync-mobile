@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../config.dart';
 import '../../social/feed.dart';
+import '../../social/formatacao.dart';
 import '../../social/models.dart';
 import '../../plataforma.dart';
 import 'painel.dart';
@@ -839,7 +840,7 @@ class _MensagemState extends State<_Mensagem> {
     final fundo = widget.destaque
         ? cs.primary.withValues(alpha: .15)
         : mencionaMe
-            ? corAusente.withValues(alpha: .1)
+            ? corAusente.withValues(alpha: .18)
             : Colors.transparent;
     final opacidade = m.estado == EstadoEnvio.enviando ? .55 : 1.0;
 
@@ -948,7 +949,7 @@ class _MensagemState extends State<_Mensagem> {
         duration: const Duration(milliseconds: 300),
         decoration: BoxDecoration(
           color: fundo,
-          border: mencionaMe ? const Border(left: BorderSide(color: corAusente, width: 3)) : null,
+          border: mencionaMe ? const Border(left: BorderSide(color: corAusente, width: 4)) : null,
         ),
         child: Stack(children: [
           if (_arraste > 0)
@@ -1398,7 +1399,7 @@ class _BuscaState extends State<_Busca> {
 
   @override
   Widget build(BuildContext context) {
-    final r = widget.feed.search(_q);
+    final r = widget.feed.search(_q, nome: (u) => widget.resolver(u)?.nome);
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * .8,
       child: Column(children: [
@@ -1463,16 +1464,3 @@ class _CartaoMensagem extends StatelessWidget {
   }
 }
 
-/// "@" de um cargo: o nome em minúsculas, sem acento e com _ no lugar de espaço
-/// ("Monitor de Cálculo" vira @monitor_de_calculo).
-String apelidoCargo(String nome) {
-  const de = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
-  const para = 'aaaaaeeeeiiiiooooouuuucn';
-  final b = StringBuffer();
-  for (final ch in nome.toLowerCase().split('')) {
-    final i = de.indexOf(ch);
-    b.write(i >= 0 ? para[i] : ch);
-  }
-  final t = b.toString().replaceAll(RegExp(r'[^a-z0-9_.]+'), '_').replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_|_$'), '');
-  return t.isEmpty ? 'cargo' : (t.length > 24 ? t.substring(0, 24) : t);
-}

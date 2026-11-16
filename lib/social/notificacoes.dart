@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../config.dart';
 import '../fundo.dart';
 import 'api.dart';
+import 'formatacao.dart';
 import 'supabase_crypto.dart';
 
 /// Uma mensagem já decifrada, pronta para aparecer na notificação.
@@ -10,11 +11,19 @@ class LinhaNotif {
   final String nome;
   final String texto;
   final int quando; // ms desde 1970
-  const LinhaNotif(this.nome, this.texto, this.quando);
+  /// A mensagem marcou você (@você, @cargo seu ou @todos).
+  final bool mencao;
+  const LinhaNotif(this.nome, this.texto, this.quando, {this.mencao = false});
 
-  Map<String, dynamic> toJson() => {'n': nome, 't': texto, 'q': quando};
-  static LinhaNotif fromJson(Map<String, dynamic> j) => LinhaNotif('${j['n']}', '${j['t']}', (j['q'] as num?)?.toInt() ?? 0);
+  Map<String, dynamic> toJson() => {'n': nome, 't': texto, 'q': quando, if (mencao) 'm': true};
+  static LinhaNotif fromJson(Map<String, dynamic> j) =>
+      LinhaNotif('${j['n']}', '${j['t']}', (j['q'] as num?)?.toInt() ?? 0, mencao: j['m'] == true);
 }
+
+/// A mensagem marca esta pessoa? (puro, testável)
+bool marcaVoce(List<String> mentions, {required String eu, Iterable<String> meusCargos = const []}) =>
+    eu.isNotEmpty &&
+    (mentions.contains(eu) || mentions.contains('everyone') || meusCargos.any((r) => mentions.contains('role:$r')));
 
 /// Notificação de uma conversa (grupo + canal, ou mensagem direta).
 class ConversaNotif {
@@ -40,6 +49,9 @@ class ConversaNotif {
 
   /// Mensagens que não cabem na notificação ("+3 mensagens").
   int get escondidas => total - linhas.length;
+
+  /// Alguma mensagem acumulada marcou você: a notificação vira de menção (#7).
+  bool get temMencao => linhas.any((l) => l.mencao);
 
   Map<String, dynamic> toJson() => {
         'c': conversa,
@@ -85,7 +97,7 @@ Map<String, ConversaNotif> acumular(Map<String, ConversaNotif> antes, List<Mensa
 /// Texto de uma notificação para sistemas sem estilo de conversa (Windows, Linux, macOS):
 /// "Ana: oi" uma por linha (sem o nome na mensagem direta) e "+N mensagens" no fim.
 String corpoSimples(ConversaNotif n) {
-  final linhas = [for (final l in n.linhas) n.direta ? l.texto : '${l.nome}: ${l.texto}'];
+  final linhas = [for (final l in n.linhas) '${l.mencao ? '📣 ' : ''}${n.direta ? l.texto : '${l.nome}: ${l.texto}'}'];
   if (n.escondidas > 0) linhas.insert(0, '+${n.escondidas} mensagens antes');
   return linhas.join('\n');
 }
@@ -152,7 +164,17 @@ class NotifSocial {
     final convs = {for (final c in (r['conversations'] as List? ?? const [])) '${(c as Map)['id']}': c};
     final canais = {for (final c in (r['channels'] as List? ?? const [])) '${(c as Map)['id']}': '${c['name']}'};
     final perfis = r['profiles'] is Map ? r['profiles'] as Map : const {};
+    // "@usuário" e "@cargo" viram o nome que aparece no chat (#7)
+    final nomePorUsuario = <String, String>{
+      for (final p in perfis.values)
+        if (p is Map && '${p['username'] ?? ''}'.isNotEmpty) '${p['username']}'.toLowerCase(): '${p['display_name']}',
+      for (final c in (r['roles'] as List? ?? const []))
+        if (c is Map) apelidoCargo('${c['name']}'): '${c['name']}',
+    };
+    String nomes(String t) => trocarMencoes(t, (u) => nomePorUsuario[u]);
     final visivel = canalVisivel?.call();
+    final eu = Cfg.socialMeuId;
+    final meusCargos = Cfg.socialMeusCargos;
 
     final novas = <MensagemNova>[];
     for (final row in rows.reversed) {
@@ -165,7 +187,7 @@ class NotifSocial {
       try {
         final c = await SupabaseSocialCrypto.decryptRow(row);
         texto = c.texto.trim().isNotEmpty
-            ? c.texto.trim()
+            ? nomes(c.texto.trim())
             : c.anexos.isEmpty
                 ? 'Mensagem'
                 : c.anexos.first.imagem
@@ -179,7 +201,10 @@ class NotifSocial {
       final nomeCanal = canais[canal];
       final titulo = direta ? nome : '${c is Map ? c['title'] : 'Grupo'}${nomeCanal == null ? '' : ' · #$nomeCanal'}';
       final quando = DateTime.tryParse('${row['created_at']}')?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
-      novas.add((conversa: conversa, canal: canal, titulo: titulo, direta: direta, linha: LinhaNotif(nome, texto, quando)));
+      final mencoes = [for (final m in (row['mentions'] as List? ?? const [])) '$m'];
+      final cargos = [for (final r in (meusCargos[conversa] as List? ?? const [])) '$r'];
+      final mencao = !direta && marcaVoce(mencoes, eu: eu, meusCargos: cargos);
+      novas.add((conversa: conversa, canal: canal, titulo: titulo, direta: direta, linha: LinhaNotif(nome, texto, quando, mencao: mencao)));
     }
     if (novas.isEmpty) return;
 

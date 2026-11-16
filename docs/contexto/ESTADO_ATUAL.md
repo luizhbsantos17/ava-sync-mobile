@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-16 (versão 1.0.0: computador, push, cargos e categorias)
+Última atualização: 2026-11-16 (versão 1.0.1: menções com nome e prioridade, issue #7)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -31,6 +31,9 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   @cargo), categorias de canais, fundo com foto no perfil e no grupo, cor do grupo,
   notificações de amizade, grupo e cargo (issues #1, #2, #4, #5).
 - Regra de reservar tarefa (skill `reservar-tarefa`, etiqueta `em andamento`).
+- Menções (#7): notificação, busca e prévia mostram o nome ("@Mikame") no lugar de
+  "@ifes_..."; menção tem canal "Menções" de prioridade máxima e passa por grupo
+  silenciado (só @você/@cargo, não @todos).
 
 ## Em andamento
 - (nada)

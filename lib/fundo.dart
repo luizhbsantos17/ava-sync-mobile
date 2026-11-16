@@ -84,26 +84,28 @@ class Notif {
   static Future<void> mostrarConversa(ConversaNotif n) async {
     await init();
     final eu = const Person(name: 'Você');
+    // menção (#7): canal próprio no Android (som e vibração podem ser outros) e 📣 no título
+    final mencao = n.temMencao;
     await p.show(
       id: 5000 + (n.id.abs() % 4000),
-      title: n.titulo,
+      title: mencao ? '📣 ${n.titulo}' : n.titulo,
       body: corpoSimples(n),
       payload: n.payload,
       notificationDetails: NotificationDetails(
-        android: AndroidNotificationDetails('social', 'Social',
-            channelDescription: 'Mensagens dos grupos e conversas',
-            importance: Importance.high,
-            priority: Priority.high,
+        android: AndroidNotificationDetails(mencao ? 'social_mencoes' : 'social', mencao ? 'Menções' : 'Social',
+            channelDescription: mencao ? 'Quando alguém marca você, um cargo seu ou @todos' : 'Mensagens dos grupos e conversas',
+            importance: mencao ? Importance.max : Importance.high,
+            priority: mencao ? Priority.max : Priority.high,
             groupKey: 'social',
             category: AndroidNotificationCategory.message,
             number: n.total,
             styleInformation: MessagingStyleInformation(
               eu,
-              conversationTitle: n.direta ? null : n.titulo,
+              conversationTitle: n.direta ? null : (mencao ? '📣 ${n.titulo}' : n.titulo),
               groupConversation: !n.direta,
               messages: [
                 for (final l in n.linhas)
-                  Message(l.texto, DateTime.fromMillisecondsSinceEpoch(l.quando), Person(name: l.nome, key: l.nome)),
+                  Message(l.mencao ? '📣 ${l.texto}' : l.texto, DateTime.fromMillisecondsSinceEpoch(l.quando), Person(name: l.nome, key: l.nome)),
               ],
             )),
       ),

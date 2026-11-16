@@ -1,7 +1,7 @@
 // Social v3: cargos (hierarquia, permissões, @menção) e notificações de eventos.
 import 'package:ava_sync_mobile/social/models.dart';
 import 'package:ava_sync_mobile/social/notificacoes.dart';
-import 'package:ava_sync_mobile/telas/social/chat.dart';
+import 'package:ava_sync_mobile/social/formatacao.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 SocialGroupInfo grupo({String myRole = 'member', List<String> myPerms = const []}) => SocialGroupInfo.fromJson({

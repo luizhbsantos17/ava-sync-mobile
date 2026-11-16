@@ -21,6 +21,18 @@ essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
 
+## [1.0.1] - 2026-11-16
+### Corrigido
+- **Menções mostram o nome**: na notificação, na busca e na prévia da conversa aparece
+  "@Mikame" (o nome do chat), e não mais o código "@ifes_...". A busca acha a mensagem
+  pelo nome de quem foi marcado.
+### Alterado
+- **Ser marcado chama mais atenção**: a notificação vem com 📣 e, no Android, num canal
+  próprio "Menções" com prioridade máxima (dá para escolher outro som). No chat, a
+  mensagem que marca você fica mais destacada.
+- **Grupo silenciado ainda avisa quando marcam você** diretamente (@você ou um @cargo seu);
+  o @todos continua silenciado.
+
 ## [1.0.0] - 2026-11-16
 ### Adicionado
 - **AVA Sync para computador** (Windows, Linux e macOS): prazos, matérias, notas e o

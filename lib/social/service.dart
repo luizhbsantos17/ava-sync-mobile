@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import '../config.dart';
 import 'api.dart';
 import 'escuta.dart';
+import 'formatacao.dart';
 import 'models.dart';
 import 'notificacoes.dart';
 import 'push.dart';
@@ -111,6 +112,8 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
       }
       list.sort((a, b) => b.sortAt.compareTo(a.sortAt));
       _notifyNew(list);
+      unawaited(Cfg.setSocialMeuId(me!.userKey));
+      unawaited(Cfg.setSocialMeusCargos({for (final c in list) if (c.myRoles.isNotEmpty) c.id: c.myRoles.toList()}));
       conversations = list;
       error = null;
       ready = true;
@@ -131,6 +134,14 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// "@usuário" de quem já apareceu (membros, amigos) vira o nome de exibição.
+  String? _nomePorUsuario(String usuario) {
+    for (final p in _profiles.values) {
+      if (p.username.toLowerCase() == usuario) return p.displayName;
+    }
+    return null;
+  }
+
   Future<String> _preview(dynamic last, SocialConversation c, bool hasKey) async {
     if (last is! Map) return c.direta ? 'Diga oi!' : 'Grupo criado';
     final row = Map<String, dynamic>.from(last)..['conversation_id'] = c.id;
@@ -140,7 +151,7 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
     if (!hasKey) return 'Mensagem protegida · aguardando a chave';
     try {
       final content = await SupabaseSocialCrypto.decryptRow(row);
-      var text = content.texto.replaceAll('\n', ' ');
+      var text = trocarMencoes(content.texto.replaceAll('\n', ' '), _nomePorUsuario);
       if (text.isEmpty && content.anexos.isNotEmpty) text = content.anexos.first.imagem ? '📷 Foto' : '📎 ${content.anexos.first.name}';
       return who.isEmpty ? text : '$who: $text';
     } catch (_) {
