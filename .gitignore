@@ -58,3 +58,7 @@ android/key.properties
 /social-config.json
 /social-supabase-config.json
 /.claude/settings.local.json
+
+# segredos locais (LiveKit e afins)
+livekit*.txt
+*.keystore.txt
