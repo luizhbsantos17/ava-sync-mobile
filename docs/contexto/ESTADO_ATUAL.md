@@ -46,9 +46,10 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
 - Canais de voz não foram testados em chamada real (falta o LiveKit). Conferir: áudio entre
   celular e computador, E2EE (todos precisam da mesma chave do grupo), compartilhar tela no
   Android (pede permissão e liga um serviço com notificação) e no Windows/Linux/macOS.
-- Turma de ingresso só aparece se o usuário do AVA começar com ano+semestre (ex.: 20242...).
-  Se o login do AVA for CPF ou outro formato, fica sem turma. Aparece depois que a sessão
-  do Social renova (até 12 h) ou ao entrar de novo.
+- Turma de ingresso (função `social` v11): tenta o usuário do AVA, depois o `idnumber` do AVA
+  (`core_user_get_users_by_field`) e, por último, a matrícula do Q-Acadêmico que o app manda
+  na renovação da sessão. Sem turma, o app renova a sessão uma vez ao abrir o Social.
+  Não confirmado com contas reais se o AVA libera o `idnumber`.
 - 1.1.0: testes não rodam no PC sem Visual Studio C++ (pacotes nativos do computador);
   conferidos no GitHub Actions.
 - App de computador ainda não foi aberto por ninguém (só build no CI e testes). Conferir

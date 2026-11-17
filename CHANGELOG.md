@@ -40,6 +40,8 @@ essa seção quando a versão atual ainda não tem uma.
 - Quem marcou "ignorar @todos" ou "ignorar @cargos" ainda recebia o aviso como menção.
 - Duas gravações dos dados ao mesmo tempo podiam falhar; agora esperam uma a outra.
 - A sincronização deixava conexões abertas, e cada imagem de conteúdo do AVA abria uma nova.
+- A **turma de ingresso** (ex.: 2024/2) não aparecia para quase ninguém: agora vem do login
+  do AVA, do número de identificação do AVA ou da matrícula do Q-Acadêmico, ao abrir o Social.
 
 ## [1.1.0] - 2026-11-16
 ### Adicionado

@@ -157,12 +157,23 @@ async function validateMoodle(site: URL, token: string) {
   const info = await moodleCall(site, token, "core_webservice_get_site_info") as Record<string, unknown>;
   const userId = Number(info.userid);
   if (!Number.isSafeInteger(userId) || userId <= 0) fail("Não foi possível identificar a conta do AVA.", 401);
-  return { userId, displayName: String(info.fullname ?? "Estudante").slice(0, 48), cohort: turmaDe(info.username) };
+  let cohort = turmaDe(info.username);
+  if (!cohort) {
+    // o login pode não ser a matrícula: tenta o "número de identificação" do aluno no AVA
+    try {
+      const u = await moodleCall(site, token, "core_user_get_users_by_field", { field: "id", values: [userId] });
+      const eu = Array.isArray(u) ? u[0] as Record<string, unknown> | undefined : undefined;
+      cohort = turmaDe(eu?.idnumber) ?? turmaDe(eu?.username);
+    } catch (_) {
+      // sem permissão para ler o próprio cadastro: fica sem turma
+    }
+  }
+  return { userId, displayName: String(info.fullname ?? "Estudante").slice(0, 48), cohort };
 }
 
-/// Turma de ingresso pelo usuário do AVA: "20242..." vira "2024/2". Outro formato: sem turma.
-export function turmaDe(username: unknown) {
-  const m = /^(20\d{2})([12])/.exec(String(username ?? "").trim());
+/// Turma de ingresso por uma matrícula: "20242..." vira "2024/2". Outro formato: sem turma.
+export function turmaDe(matricula: unknown) {
+  const m = /^(20\d{2})([12])/.exec(String(matricula ?? "").trim());
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
@@ -652,7 +663,12 @@ type Ctx = { userId: string; payload: Row; site?: URL; token?: string; host?: st
 
 const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
   // --- sessão e compatibilidade
-  async session({ userId }) {
+  async session({ userId, moodle, payload }) {
+    // sem turma pelo AVA: usa a matrícula do Q-Acadêmico que o app mandou, só se ainda vazia
+    if (!moodle?.cohort) {
+      const c = turmaDe(payload.matricula);
+      if (c) await db(`social_profiles?user_key=eq.${q(userId)}&cohort=is.null`, "PATCH", { cohort: c }, "return=minimal");
+    }
     await touchSeen(userId);
     return { ...(await issueSession(userId)), me: shapeProfile(await myProfile(userId), true) };
   },

@@ -51,6 +51,14 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
     EscutaSocial.iniciarNoApp();
     unawaited(PushSocial.registrar());
     if (!ready) await refresh(showLoading: true);
+    // ainda sem turma de ingresso: renova a sessão (o servidor lê a turma no AVA) uma vez
+    if (ready && me != null && me!.cohort == null && !_tentouTurma) {
+      _tentouTurma = true;
+      try {
+        await api.renewSession();
+        await refresh();
+      } catch (_) {}
+    }
     _schedule();
   }
 
@@ -71,6 +79,7 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
   bool get foreground => _foreground;
 
   int _telas = 0;
+  bool _tentouTurma = false;
 
   /// A tela do Social apareceu/sumiu. A visão geral só se atualiza sozinha com ela aberta
   /// (as notificações continuam pela escuta em tempo real).
