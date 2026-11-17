@@ -31,4 +31,18 @@ void main() {
     expect(lido.length, 3000);
     expect((lido['chave2999'] as Map)['n'], 2999);
   });
+
+  test('trocar a pasta reaponta os caminhos salvos no snapshot', () {
+    final snap = {
+      'cursos': [
+        {'nome': 'Matéria', 'arquivos': [{'caminho': 'C:/Users/x/AVA/Materia/a.pdf'}, {'caminho': 'D:/outro/b.pdf'}]},
+      ],
+      'n': 3,
+    };
+    final novo = Store.trocarPrefixo(snap, 'C:/Users/x/AVA', 'E:/Facul/AVA Sync') as Map;
+    final arqs = ((novo['cursos'] as List).first as Map)['arquivos'] as List;
+    expect((arqs[0] as Map)['caminho'], 'E:/Facul/AVA Sync/Materia/a.pdf');
+    expect((arqs[1] as Map)['caminho'], 'D:/outro/b.pdf'); // fora da pasta antiga: igual
+    expect(novo['n'], 3);
+  });
 }

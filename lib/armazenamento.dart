@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'config.dart';
 import 'plataforma.dart';
+import 'sync.dart';
 import 'util.dart';
 
 /// Onde o app guarda as coisas.
@@ -28,11 +29,35 @@ class Store {
   /// Troca a pasta dos arquivos. Com [mover], leva os arquivos já baixados junto.
   /// [nova] vazia volta para a pasta padrão.
   static Future<void> trocarPasta(String nova, {bool mover = true}) async {
+    // uma sincronização em andamento guardou a pasta antiga e continuaria gravando nela
+    // (era por isso que os arquivos "continuavam indo para o C:"): espera ela terminar
+    while (Sync.rodando) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
     final antes = await base();
     await Cfg.setPastaArquivos(nova);
+    await Cfg.setPastaConfirmada(true);
     _base = null;
     final depois = await base();
     if (!mover || antes.path == depois.path || !await antes.exists()) return;
+    await _moverConteudo(antes, depois);
+    // o que as telas mostram guarda o caminho de cada arquivo: aponta para a pasta nova
+    final snap = await snapshot();
+    if (snap.isNotEmpty) await salvarSnapshot(mapa(trocarPrefixo(snap, antes.path, depois.path)));
+    try {
+      if (await antes.list().isEmpty) await antes.delete();
+    } catch (_) {}
+  }
+
+  /// Troca o começo [de] por [para] em todo texto de [v] (mapas e listas aninhados).
+  static Object? trocarPrefixo(Object? v, String de, String para) {
+    if (v is String) return v.startsWith(de) ? para + v.substring(de.length) : v;
+    if (v is Map) return {for (final e in v.entries) '${e.key}': trocarPrefixo(e.value, de, para)};
+    if (v is List) return [for (final x in v) trocarPrefixo(x, de, para)];
+    return v;
+  }
+
+  static Future<void> _moverConteudo(Directory antes, Directory depois) async {
     await for (final e in antes.list(followLinks: false)) {
       final destino = '${depois.path}${Platform.pathSeparator}${e.uri.pathSegments.where((s) => s.isNotEmpty).last}';
       try {

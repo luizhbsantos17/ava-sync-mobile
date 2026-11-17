@@ -142,7 +142,8 @@ class _InicioTelaState extends State<InicioTela> {
             ),
           );
         }
-        final extendido = MediaQuery.sizeOf(context).width >= 1200;
+        final recolhido = Cfg.menuRecolhido;
+        final extendido = !recolhido && MediaQuery.sizeOf(context).width >= 1200;
         return CallbackShortcuts(
           bindings: atalhos,
           child: Focus(
@@ -154,10 +155,28 @@ class _InicioTelaState extends State<InicioTela> {
                   minExtendedWidth: 210,
                   selectedIndex: _aba,
                   onDestinationSelected: (i) => setState(() => _aba = i),
-                  labelType: extendido ? NavigationRailLabelType.none : NavigationRailLabelType.all,
+                  minWidth: recolhido ? 64 : 80,
+                  labelType: extendido || recolhido ? NavigationRailLabelType.none : NavigationRailLabelType.all,
+                  // recolher/abrir o menu (fica guardado)
+                  trailing: Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: IconButton(
+                          tooltip: recolhido ? 'Mostrar os nomes do menu' : 'Recolher o menu',
+                          icon: Icon(recolhido ? Icons.keyboard_double_arrow_right_rounded : Icons.keyboard_double_arrow_left_rounded),
+                          onPressed: () async {
+                            await Cfg.setMenuRecolhido(!recolhido);
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
                   leading: Padding(
                     padding: const EdgeInsets.only(top: 8, bottom: 16),
-                    child: GestureDetector(onTap: () => setState(() => _aba = 4), child: const Avatar(tamanho: 44)),
+                    child: GestureDetector(onTap: () => setState(() => _aba = 4), child: Avatar(tamanho: recolhido ? 36 : 44)),
                   ),
                   destinations: [
                     for (final d in _destinos)

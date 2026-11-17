@@ -297,6 +297,14 @@ class _VozTelaState extends State<VozTela> {
         shareText: 'Compartilhar',
       );
 
+  /// Mostra (uma vez) o erro de câmera ou tela, com a mensagem real para dar para investigar.
+  void _avisarFalha() {
+    final f = voz.falhaMidia;
+    if (f == null || !mounted) return;
+    voz.falhaMidia = null;
+    mostrarAviso(context, f);
+  }
+
   Future<void> _menuPessoa(PessoaNaVoz p, Offset? pos) async {
     final c = voz.conversa;
     final podeTirar = c != null && !p.eu && c.pode(Permissao.expulsar);
@@ -462,14 +470,20 @@ class _VozTelaState extends State<VozTela> {
                     icone: voz.cameraLigada ? Icons.videocam_rounded : Icons.videocam_off_rounded,
                     dica: voz.cameraLigada ? 'Desligar câmera' : 'Ligar câmera',
                     ativo: voz.cameraLigada,
-                    aoTocar: voz.alternarCamera,
+                    aoTocar: () async {
+                      await voz.alternarCamera();
+                      _avisarFalha();
+                    },
                   ),
                   _BotaoRedondo(
                     tamanho: 54,
                     icone: voz.telaLigada ? Icons.stop_screen_share_rounded : Icons.screen_share_rounded,
                     dica: voz.telaLigada ? 'Parar de compartilhar' : 'Compartilhar a tela',
                     ativo: voz.telaLigada,
-                    aoTocar: () => voz.alternarTela(_escolherTela),
+                    aoTocar: () async {
+                      await voz.alternarTela(_escolherTela);
+                      _avisarFalha();
+                    },
                   ),
                   _BotaoRedondo(
                     tamanho: 54,

@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-16 (1.2.0 lançada: canais de voz, presença sobre o total, turma de ingresso; voz espera o LiveKit)
+Última atualização: 2026-11-16 (1.2.1: correção do crash da voz no Android, pasta dos arquivos, menu recolhível)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -43,6 +43,9 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   `LIVEKIT_API_SECRET` nos segredos da Edge Function. Sem isso, entrar mostra "ainda não foram ligados".
 
 ## Problemas conhecidos / não verificado
+- Voz no computador funciona (testado pelo dono). Compartilhar tela no Windows falhava sem
+  mensagem; a 1.2.1 mostra o erro real para investigar. Ligar a câmera congela a tela por
+  alguns segundos (abertura do dispositivo no código nativo do flutter_webrtc).
 - Canais de voz não foram testados em chamada real (falta o LiveKit). Conferir: áudio entre
   celular e computador, E2EE (todos precisam da mesma chave do grupo), compartilhar tela no
   Android (pede permissão e liga um serviço com notificação) e no Windows/Linux/macOS.

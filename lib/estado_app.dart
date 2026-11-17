@@ -7,6 +7,7 @@ import 'classificar.dart';
 import 'config.dart';
 import 'fundo.dart';
 import 'moodle.dart';
+import 'plataforma.dart';
 import 'qacademico.dart';
 import 'sync.dart';
 import 'util.dart';
@@ -31,6 +32,9 @@ class AppEstado extends ChangeNotifier {
 
   /// Preenchido pela tela inicial (WebView oculto). Devolve null se deu certo, ou a mensagem.
   Future<String?> Function()? atualizarAcademico;
+
+  /// Computador: pergunta onde salvar os arquivos antes da primeira sincronização.
+  Future<void> Function()? escolherPastaInicial;
 
   /// Guarda o que veio do Q-Academico e avisa o que mudou. Devolve quantas disciplinas.
   Future<int> salvarAcademico(List<Disciplina> novas, {List<Aula> horario = const []}) async {
@@ -109,6 +113,12 @@ class AppEstado extends ChangeNotifier {
   Future<void> sincronizar({bool todasMaterias = false}) async {
     if (sincronizando) return;
     sincronizando = true;
+    final escolher = escolherPastaInicial;
+    if (Plataforma.desktop && !Cfg.pastaConfirmada && escolher != null) {
+      try {
+        await escolher();
+      } catch (_) {}
+    }
     erro = null;
     progresso = todasMaterias ? 'Preparando sincronização completa...' : 'Iniciando...';
     notifyListeners();

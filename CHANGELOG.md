@@ -20,8 +20,19 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+
+## [1.2.1] - 2026-11-16
+### Adicionado
+- Computador: **recolher o menu principal** (Prazos, Matérias...) para ficar só com os ícones,
+  no botão de setas no fim do menu.
+- Computador: antes da primeira sincronização, o app **pergunta onde salvar os arquivos**.
 ### Corrigido
 - O app **fechava sozinho ao entrar num canal de voz** no Android.
+- **Trocar a pasta dos arquivos não funcionava** se havia uma sincronização em andamento: ela
+  continuava gravando na pasta antiga. Agora a troca espera a sincronização, move os arquivos
+  e os materiais já baixados continuam abrindo.
+- Câmera e compartilhar tela na chamada: quando falham, o app mostra o motivo, e um segundo
+  clique enquanto a câmera ainda está abrindo não trava mais a chamada.
 
 ## [1.2.0] - 2026-11-16
 ### Adicionado
