@@ -20,10 +20,14 @@ class LinhaNotif {
       LinhaNotif('${j['n']}', '${j['t']}', (j['q'] as num?)?.toInt() ?? 0, mencao: j['m'] == true);
 }
 
-/// A mensagem marca esta pessoa? (puro, testável)
-bool marcaVoce(List<String> mentions, {required String eu, Iterable<String> meusCargos = const []}) =>
+/// A mensagem marca esta pessoa? Respeita "ignorar @todos" e "ignorar @cargos" do grupo.
+/// (puro, testável)
+bool marcaVoce(List<String> mentions,
+        {required String eu, Iterable<String> meusCargos = const [], bool ignorarTodos = false, bool ignorarCargos = false}) =>
     eu.isNotEmpty &&
-    (mentions.contains(eu) || mentions.contains('everyone') || meusCargos.any((r) => mentions.contains('role:$r')));
+    (mentions.contains(eu) ||
+        (!ignorarTodos && mentions.contains('everyone')) ||
+        (!ignorarCargos && meusCargos.any((r) => mentions.contains('role:$r'))));
 
 /// Notificação de uma conversa (grupo + canal, ou mensagem direta).
 class ConversaNotif {
@@ -175,6 +179,7 @@ class NotifSocial {
     final visivel = canalVisivel?.call();
     final eu = Cfg.socialMeuId;
     final meusCargos = Cfg.socialMeusCargos;
+    final ignorar = Cfg.socialIgnorarMencoes;
 
     final novas = <MensagemNova>[];
     for (final row in rows.reversed) {
@@ -203,7 +208,9 @@ class NotifSocial {
       final quando = DateTime.tryParse('${row['created_at']}')?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
       final mencoes = [for (final m in (row['mentions'] as List? ?? const [])) '$m'];
       final cargos = [for (final r in (meusCargos[conversa] as List? ?? const [])) '$r'];
-      final mencao = !direta && marcaVoce(mencoes, eu: eu, meusCargos: cargos);
+      final ig = ignorar[conversa] is List ? ignorar[conversa] as List : const [];
+      final mencao = !direta &&
+          marcaVoce(mencoes, eu: eu, meusCargos: cargos, ignorarTodos: ig.isNotEmpty && ig[0] == true, ignorarCargos: ig.length > 1 && ig[1] == true);
       novas.add((conversa: conversa, canal: canal, titulo: titulo, direta: direta, linha: LinhaNotif(nome, texto, quando, mencao: mencao)));
     }
     if (novas.isEmpty) return;

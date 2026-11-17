@@ -45,7 +45,7 @@ class Avatar extends StatelessWidget {
       decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [t.cor, t.segundaCor])),
       child: ClipOval(
         child: temFoto
-            ? Image.file(File(foto), fit: BoxFit.cover, key: ValueKey(foto))
+            ? Image.file(File(foto), fit: BoxFit.cover, key: ValueKey(foto), cacheWidth: 512)
             : Container(
                 color: Theme.of(context).colorScheme.surface,
                 alignment: Alignment.center,

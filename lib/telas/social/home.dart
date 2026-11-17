@@ -57,6 +57,7 @@ class _SocialTelaState extends State<SocialTela> {
 
   @override
   void dispose() {
+    social.telaFechada();
     _chat.dispose();
     super.dispose();
   }
@@ -68,6 +69,7 @@ class _SocialTelaState extends State<SocialTela> {
     _chat.addListener(() {
       if (_aba != 0 && mounted) setState(() => _aba = 0);
     });
+    social.telaAberta();
     unawaited(_iniciar());
   }
 

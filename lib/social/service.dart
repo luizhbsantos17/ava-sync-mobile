@@ -60,7 +60,7 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
     if (fg == _foreground) return;
     _foreground = fg;
     if (fg) {
-      unawaited(refresh());
+      if (_telas > 0) unawaited(refresh());
       _schedule();
     } else {
       _timer?.cancel();
@@ -70,9 +70,23 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get foreground => _foreground;
 
+  int _telas = 0;
+
+  /// A tela do Social apareceu/sumiu. A visão geral só se atualiza sozinha com ela aberta
+  /// (as notificações continuam pela escuta em tempo real).
+  void telaAberta() {
+    _telas++;
+    _schedule();
+  }
+
+  void telaFechada() {
+    _telas = (_telas - 1).clamp(0, 99);
+    if (_telas == 0) _timer?.cancel();
+  }
+
   void _schedule() {
     _timer?.cancel();
-    if (!_foreground) return;
+    if (!_foreground || _telas == 0) return;
     _timer = Timer.periodic(const Duration(seconds: 15), (_) => unawaited(refresh()));
   }
 
@@ -121,6 +135,8 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
       _notifyNew(list);
       unawaited(Cfg.setSocialMeuId(me!.userKey));
       unawaited(Cfg.setSocialMeusCargos({for (final c in list) if (c.myRoles.isNotEmpty) c.id: c.myRoles.toList()}));
+      unawaited(Cfg.setSocialIgnorarMencoes(
+          {for (final c in list) if (c.suppressEveryone || c.suppressRoles) c.id: [c.suppressEveryone, c.suppressRoles]}));
       final assinatura = _assinar(list, pendingFriends);
       _mudouAlgo = _mudouAlgo || assinatura != _assinatura || error != null || !ready;
       _assinatura = assinatura;

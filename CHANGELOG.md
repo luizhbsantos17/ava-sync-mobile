@@ -31,6 +31,15 @@ essa seção quando a versão atual ainda não tem uma.
 - Canal de voz com **limite de pessoas**. Ao criar canal, escolha "Texto" ou "Voz".
 - Áudio e vídeo **cifrados de ponta a ponta** com a chave do grupo: nem o servidor da
   chamada consegue ouvir.
+### Alterado
+- **App mais leve**: o Social só se atualiza sozinho com a tela dele aberta; fotos e
+  imagens são carregadas no tamanho em que aparecem; listas longas (novidades) montam só o
+  que está na tela; os dados salvos grandes são lidos e gravados sem travar a tela.
+### Corrigido
+- Sair de uma conversa podia deixar a última mensagem como não lida.
+- Quem marcou "ignorar @todos" ou "ignorar @cargos" ainda recebia o aviso como menção.
+- Duas gravações dos dados ao mesmo tempo podiam falhar; agora esperam uma a outra.
+- A sincronização deixava conexões abertas, e cada imagem de conteúdo do AVA abria uma nova.
 
 ## [1.1.0] - 2026-11-16
 ### Adicionado
