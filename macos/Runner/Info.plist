@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Para falar nos canais de voz do Social.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Para ligar a câmera nos canais de voz do Social.</string>
 </dict>
 </plist>

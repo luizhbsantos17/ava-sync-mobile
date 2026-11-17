@@ -139,3 +139,24 @@ contador de menções do `social_overview` respeitam essas opções. `muted` fic
 `arrange_channels {conversationId, categoryIds[], channels:[{id, categoryId}]}` grava de uma
 vez a ordem das categorias e, na ordem da lista, a categoria e a posição de cada canal.
 Exige a permissão de gerenciar canais.
+
+
+## Canais de voz (issue #3)
+
+- Canal com `kind = 'voice'` (e `user_limit` opcional). A chamada é no LiveKit, sala
+  `avasync-<id do canal>`, identidade = `user_key`.
+- `voice_join {channelId, muted}` confere o grupo e o limite, marca presença e devolve
+  `{url, token}`. `voice_state` renova a presença (mudo, surdo, câmera, tela) a cada ~20 s;
+  `voice_leave` sai. `voice_disconnect {channelId, userKey}` (quem pode remover) tira alguém
+  da sala pela API do LiveKit.
+- O `social_overview` manda, em cada canal de voz, quem está nele (`voice`).
+- Mídia cifrada de ponta a ponta no aparelho; a chave vem da chave do grupo
+  (`VozController.chaveMidia`).
+
+### Ligar no servidor (dono)
+
+1. Crie um projeto em https://cloud.livekit.io (plano grátis).
+2. Em Settings > Keys, crie uma chave e copie a URL do projeto (`wss://...livekit.cloud`),
+   a API Key e o API Secret.
+3. No Supabase: Edge Functions > Secrets (ou `supabase secrets set`), crie
+   `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`. Não precisa publicar a função de novo.

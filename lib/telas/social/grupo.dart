@@ -794,6 +794,8 @@ Future<bool> dialogoCanal(BuildContext context,
   final nome = TextEditingController(text: canal?.name ?? '');
   final topico = TextEditingController(text: canal?.topic ?? '');
   var soAdmins = canal?.onlyAdmins ?? false;
+  var ehVoz = canal?.voz ?? false;
+  int? limite = canal?.userLimit;
   String? categoria = canal?.categoryId ?? categoriaInicial;
   final ok = await showDialog<bool>(
     context: context,
@@ -801,11 +803,22 @@ Future<bool> dialogoCanal(BuildContext context,
       builder: (ctx, set) => AlertDialog(
         title: Text(canal == null ? 'Criar canal' : 'Editar canal'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (canal == null) ...[
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, icon: Icon(Icons.tag_rounded), label: Text('Texto')),
+                ButtonSegment(value: true, icon: Icon(Icons.volume_up_rounded), label: Text('Voz')),
+              ],
+              selected: {ehVoz},
+              onSelectionChanged: (s) => set(() => ehVoz = s.first),
+            ),
+            const SizedBox(height: 10),
+          ],
           TextField(
             controller: nome,
             autofocus: true,
             maxLength: 32,
-            decoration: const InputDecoration(labelText: 'Nome', prefixIcon: Icon(Icons.tag_rounded)),
+            decoration: InputDecoration(labelText: 'Nome', prefixIcon: Icon(ehVoz ? Icons.volume_up_rounded : Icons.tag_rounded)),
             onSubmitted: (_) => Navigator.pop(ctx, true),
           ),
           TextField(controller: topico, maxLength: 200, decoration: const InputDecoration(labelText: 'Tópico (opcional)')),
@@ -819,13 +832,24 @@ Future<bool> dialogoCanal(BuildContext context,
               ],
               onChanged: (v) => set(() => categoria = v),
             ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Canal de avisos'),
-            subtitle: const Text('Só quem tem permissão escreve'),
-            value: soAdmins,
-            onChanged: (v) => set(() => soAdmins = v),
-          ),
+          if (!ehVoz)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Canal de avisos'),
+              subtitle: const Text('Só quem tem permissão escreve'),
+              value: soAdmins,
+              onChanged: (v) => set(() => soAdmins = v),
+            )
+          else
+            DropdownButtonFormField<int?>(
+              initialValue: limite,
+              decoration: const InputDecoration(labelText: 'Limite de pessoas'),
+              items: [
+                const DropdownMenuItem<int?>(value: null, child: Text('Sem limite')),
+                for (final n in const [2, 3, 4, 5, 8, 10, 15, 20, 25, 50, 99]) DropdownMenuItem<int?>(value: n, child: Text('$n pessoas')),
+              ],
+              onChanged: (v) => set(() => limite = v),
+            ),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
@@ -835,7 +859,14 @@ Future<bool> dialogoCanal(BuildContext context,
     ),
   );
   final salvar = ok == true && nome.text.trim().isNotEmpty;
-  final dados = {'name': nome.text, 'topic': topico.text, 'onlyAdmins': soAdmins, 'categoryId': categoria};
+  final dados = {
+    'name': nome.text,
+    'topic': topico.text,
+    'onlyAdmins': soAdmins && !ehVoz,
+    'categoryId': categoria,
+    if (canal == null) 'kind': ehVoz ? 'voice' : 'text',
+    if (ehVoz) 'userLimit': limite,
+  };
   nome.dispose();
   topico.dispose();
   if (!salvar) return false;

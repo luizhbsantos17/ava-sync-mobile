@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-16 (1.1.0 na branch `feature/social-fluidez`: Social fluido, notificações por grupo, arrastar, turma; inclui o PR #9)
+Última atualização: 2026-11-16 (1.1.0 lançada; canais de voz na branch `feature/canais-voz`)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -36,14 +36,16 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   silenciado (só @você/@cargo, não @todos).
 
 ## Em andamento
-- **1.1.0** (branch `feature/social-fluidez`, inclui `fix/mencoes`/#9): animações e menus no
-  Social, arrastar grupos/canais/categorias, notificações por grupo (`notify`), @all,
-  pular para não lidas e menções, turma de ingresso, Enter para enviar e painéis no
-  computador, pasta de arquivos e instalador com escolha de pasta. Banco (migration
-  `202611160003_social_v4`) e Edge Function já publicados. Falta: testar no celular e no
-  Windows; o dono decide o merge.
+- **Canais de voz (issue #3)**, branch `feature/canais-voz`: LiveKit com E2EE pela chave do
+  grupo, presença em `social_voice_presence`, ações `voice_join`/`voice_state`/`voice_leave`/
+  `voice_disconnect`. Banco (migration `202611160004_social_voice`) aplicado. **Falta o dono**
+  criar o projeto no LiveKit Cloud e pôr `LIVEKIT_URL`, `LIVEKIT_API_KEY` e
+  `LIVEKIT_API_SECRET` nos segredos da Edge Function. Sem isso, entrar mostra "ainda não foram ligados".
 
 ## Problemas conhecidos / não verificado
+- Canais de voz não foram testados em chamada real (falta o LiveKit). Conferir: áudio entre
+  celular e computador, E2EE (todos precisam da mesma chave do grupo), compartilhar tela no
+  Android (pede permissão e liga um serviço com notificação) e no Windows/Linux/macOS.
 - Turma de ingresso só aparece se o usuário do AVA começar com ano+semestre (ex.: 20242...).
   Se o login do AVA for CPF ou outro formato, fica sem turma. Aparece depois que a sessão
   do Social renova (até 12 h) ou ao entrar de novo.
@@ -74,8 +76,6 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   em nenhum sistema (só testes de unidade).
 
 ## Ideias / próximos passos (não decididos)
-- **Canais de voz (issue #3)**: decidido pelo dono usar LiveKit Cloud (plano grátis) na
-  versão seguinte; ele cria a conta e põe as chaves no Supabase, como no Firebase.
 - Computador: exportar prazos em `.ics` no lugar da agenda do celular.
 - **Decidido pelo dono, fazer depois do teste da beta:** guardar a chave de cada conversa
   no servidor (cifrada com segredo da Edge Function), estilo Discord, no lugar de só no

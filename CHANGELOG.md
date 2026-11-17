@@ -20,6 +20,17 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+### Adicionado
+- **Canais de voz**, como no Discord: várias pessoas na mesma chamada, microfone,
+  "ensurdecer", câmera e **compartilhar a tela** (no computador dá para escolher a tela ou a
+  janela). Quem está falando aparece com um anel verde; a lista de canais mostra quem está
+  em cada chamada antes de entrar.
+- Barra "Voz conectada" no Social, com mudo, ensurdecer e sair, enquanto você usa o resto do app.
+- Na chamada: destacar o vídeo de alguém, volume de cada pessoa (só no seu aparelho),
+  escolher microfone e saída de som (computador) e, para quem modera, desconectar alguém.
+- Canal de voz com **limite de pessoas**. Ao criar canal, escolha "Texto" ou "Voz".
+- Áudio e vídeo **cifrados de ponta a ponta** com a chave do grupo: nem o servidor da
+  chamada consegue ouvir.
 
 ## [1.1.0] - 2026-11-16
 ### Adicionado

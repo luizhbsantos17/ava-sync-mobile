@@ -570,7 +570,7 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
       builder: (ctx) => SafeArea(
         child: ListView(shrinkWrap: true, children: [
           SecaoTitulo(c.nome),
-          for (final ch in c.channels)
+          for (final ch in c.channels.where((ch) => !ch.voz))
             ListTile(
               leading: Icon(ch.onlyAdmins ? Icons.campaign_outlined : Icons.tag_rounded),
               title: Text(ch.name, style: TextStyle(fontWeight: ch.unread > 0 ? FontWeight.w800 : FontWeight.w500)),

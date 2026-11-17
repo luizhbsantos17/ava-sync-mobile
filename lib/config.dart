@@ -80,6 +80,11 @@ class Cfg {
   static bool get socialMembrosVisiveis => _p.getBool('social_membros_visiveis') ?? true;
   static Future<void> setSocialMembrosVisiveis(bool v) => _p.setBool('social_membros_visiveis', v);
 
+  // ---- voz ----
+  /// Entrar nos canais de voz já com o microfone desligado.
+  static bool get vozMudo => _p.getBool('voz_mudo') ?? false;
+  static Future<void> setVozMudo(bool v) => _p.setBool('voz_mudo', v);
+
   // ---- social ----
   static bool get socialNotificacoes => _p.getBool('social_notif') ?? true;
   static Future<void> setSocialNotificacoes(bool v) => _p.setBool('social_notif', v);

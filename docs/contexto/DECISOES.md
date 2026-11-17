@@ -59,6 +59,19 @@ valham para os dois sem trabalho dobrado. App separado obrigaria a copiar cada m
 do Linux instala GTK/X11 e o Windows precisa do Visual Studio com C++. "Abrir com o sistema"
 foi feito sem pacote (o `launch_at_startup` não resolve com o SDK atual).
 
+## 2026-11-16 — Canais de voz com LiveKit e E2EE
+**Decisão:** a mídia passa pelo LiveKit (Cloud, plano grátis; o dono cria a conta). A Edge
+Function só emite o token (JWT HS256 com os segredos `LIVEKIT_*`) e guarda quem está em cada
+canal (`social_voice_presence`, renovada a cada 20 s, expira em 45 s). Áudio e vídeo vão
+cifrados (E2EE do LiveKit) com uma chave derivada da chave do grupo
+(`SHA-256("ava-sync-voz-v1|canal|" + chave)`).
+**Por quê:** fazer WebRTC com várias pessoas e tela compartilhada exige um servidor de mídia
+(SFU); o LiveKit tem cliente Flutter para Android, Windows, Linux e macOS. O E2EE mantém a
+promessa do Social: o servidor não ouve nem vê.
+**Consequências:** quem não tem a chave do grupo não entra na voz. Uma pessoa fica em um canal
+de voz por vez. No Android, a chamada usa um serviço em primeiro plano (notificação) para
+seguir com o app em segundo plano.
+
 ## 2026-11-16 — Notificações por grupo e ordem dos grupos
 **Decisão:** `social_members.notify` (`all`, `mentions`, `none`) com `suppress_everyone` e
 `suppress_roles`; `muted` continua existindo e vale `notify <> 'all'` para o app antigo.
