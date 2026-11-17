@@ -96,12 +96,16 @@ class HtmlView extends StatelessWidget {
   final String? baseDir; // para src relativo (HTML salvo em pasta)
   const HtmlView(this.html, {super.key, this.baseDir});
 
+  /// Decodifica a imagem só na largura da tela (fotos de câmera têm 4000 px).
+  static int _larguraImagem(BuildContext context) =>
+      (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).clamp(320, 2400).round();
+
   Widget? _img(BuildContext context, String src, {bool dentroDeLink = false}) {
     Widget? w;
     if (src.startsWith('/')) {
-      w = Image.file(File(src), errorBuilder: (_, _, _) => const Icon(Icons.broken_image));
+      w = Image.file(File(src), cacheWidth: _larguraImagem(context), errorBuilder: (_, _, _) => const Icon(Icons.broken_image));
     } else if (baseDir != null && !src.contains(':')) {
-      w = Image.file(File('$baseDir/${Uri.decodeFull(src)}'), errorBuilder: (_, _, _) => const Icon(Icons.broken_image));
+      w = Image.file(File('$baseDir/${Uri.decodeFull(src)}'), cacheWidth: _larguraImagem(context), errorBuilder: (_, _, _) => const Icon(Icons.broken_image));
     } else if (src.startsWith('http') && app.token != null && Uri.tryParse(src)?.host == Uri.tryParse(Cfg.site)?.host) {
       w = Image.network(Moodle(Cfg.site, app.token!).comToken(src),
           errorBuilder: (_, _, _) => const Icon(Icons.broken_image));

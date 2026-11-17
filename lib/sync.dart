@@ -129,8 +129,13 @@ class Sync {
       final tok = moodle == null ? await Cfg.token() : 'x';
       if (tok == null || Cfg.site.isEmpty) throw MoodleErro('Faça login primeiro.', sessao: true);
       final m = moodle ?? Moodle(Cfg.site, tok);
-      return await _rodar(m, progresso ?? (_) {}, externo, baixarArquivos ?? Cfg.baixarArquivos,
-          todasMaterias: todasMaterias);
+      try {
+        return await _rodar(m, progresso ?? (_) {}, externo, baixarArquivos ?? Cfg.baixarArquivos,
+            todasMaterias: todasMaterias);
+      } finally {
+        // fecha as conexões da sincronização (antes ficavam abertas até o sistema matar)
+        if (moodle == null) m.c.close();
+      }
     } finally {
       rodando = false;
     }

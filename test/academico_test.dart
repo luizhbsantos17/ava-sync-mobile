@@ -95,8 +95,12 @@ void main() {
 
     test('usa total de aulas quando existe, o % do Q-Academico e a frequencia minima escolhida', () {
       expect(frequencia(Disciplina(nome: 'R', carga: 60, aulas: 72, faltas: 0)).limite, 18);
+      // presenca principal: sobre o total do semestre (72 aulas), nao sobre as aulas dadas
       final d = Disciplina(nome: 'R', carga: 60, faltas: 8, frequencia: 86.7);
-      expect(frequencia(d).percentual, 86.7);
+      expect(frequencia(d).percentual, closeTo(100 * (1 - 8 / 72), 0.01));
+      expect(frequencia(d).percentualDadas, 86.7);
+      // sem carga horaria, so resta o % do Q-Academico
+      expect(frequencia(Disciplina(nome: 'R', faltas: 8, frequencia: 86.7)).percentual, 86.7);
       expect(frequencia(d, minima: 80).limite, 14);
     });
   });

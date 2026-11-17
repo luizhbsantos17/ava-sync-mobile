@@ -31,8 +31,27 @@ MomentoAula momento(Aula a, {int? minutos}) {
   return MomentoAula.depois;
 }
 
+/// Quantos dias ainda pode faltar desta disciplina (do boletim importado).
+/// Sem boletim ou sem carga horaria: so quantas faltas custa faltar hoje.
+String resumoFaltas(Aula a) {
+  final n = norm(a.disciplina);
+  Disciplina? d;
+  for (final x in app.academico) {
+    if (norm(x.nome) == n) {
+      d = x;
+      break;
+    }
+  }
+  final custo = '${a.aulas} falta${a.aulas == 1 ? '' : 's'} por dia';
+  final dias = d == null ? null : app.freqDe(d).diasRestantes;
+  if (dias == null) return 'faltar = $custo';
+  if (dias < 0) return 'passou do limite de faltas';
+  if (dias == 0) return 'não pode mais faltar';
+  return 'pode faltar mais $dias dia${dias == 1 ? '' : 's'}';
+}
+
 /// Bloco de uma aula (linha do tempo): horario, disciplina com a cor dela, sala e
-/// quantas faltas custa faltar.
+/// quantos dias ainda pode faltar.
 class AulaTile extends StatelessWidget {
   final Aula aula;
   final MomentoAula? quando;
@@ -88,7 +107,8 @@ class AulaTile extends StatelessWidget {
                   Text(
                     [
                       if (aula.detalhe.isNotEmpty) aula.detalhe,
-                      '${aula.aulas} aula${aula.aulas == 1 ? '' : 's'} · faltar = ${aula.aulas} falta${aula.aulas == 1 ? '' : 's'}',
+                      '${aula.aulas} aula${aula.aulas == 1 ? '' : 's'}',
+                      resumoFaltas(aula),
                     ].join(' · '),
                     style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                     maxLines: 2,

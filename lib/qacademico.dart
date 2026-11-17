@@ -181,12 +181,14 @@ class Disciplina {
 
 /// Frequencia e faltas de uma disciplina.
 class Frequencia {
-  final double? percentual; // presenca, 0-100
+  final double? percentual; // presenca sobre o total do semestre (carga), 0-100
+  final double? percentualDadas; // presenca sobre as aulas ja dadas (o % do Q-Academico)
   final double? faltasPercentual;
   final int? limite; // faltas permitidas no total
   final int? restantes; // quantas faltas ainda pode ter (negativo = passou)
   final int aulasPorDia; // faltar um dia de aula desta disciplina custa isto
-  const Frequencia(this.percentual, this.faltasPercentual, this.limite, this.restantes, this.aulasPorDia);
+  const Frequencia(this.percentual, this.faltasPercentual, this.limite, this.restantes, this.aulasPorDia,
+      {this.percentualDadas});
 
   /// Quantos dias inteiros de aula ainda pode faltar.
   int? get diasRestantes => restantes == null ? null : (restantes! < 0 ? -1 : restantes! ~/ aulasPorDia);
@@ -205,11 +207,13 @@ Frequencia frequencia(Disciplina d, {double minima = 75, int aulasPorDia = 2}) {
   final aulas = (d.aulas ?? 0) > 0 ? d.aulas : null;
   final total = aulas != null && aulas != d.carga ? aulas : d.carga == null ? null : d.carga! * 60 / 50;
   final faltas = d.faltas ?? 0;
-  double? pres = d.frequencia;
-  if (pres == null && total != null && total > 0) pres = (100 * (1 - faltas / total)).clamp(0, 100).toDouble();
+  // O que decide reprovar por falta e o total do semestre, nao as aulas dadas ate agora:
+  // por isso o % principal e sobre o total. O % do Q-Academico so vale sem carga horaria.
+  final pres = total != null && total > 0 ? (100 * (1 - faltas / total)).clamp(0, 100).toDouble() : d.frequencia;
   final limite = total == null || total <= 0 ? null : (total * (100 - min) / 100).floor();
   return Frequencia(pres, pres == null ? null : 100 - pres, limite, limite == null ? null : limite - faltas.ceil(),
-      aulasPorDia < 1 ? 1 : aulasPorDia);
+      aulasPorDia < 1 ? 1 : aulasPorDia,
+      percentualDadas: d.frequencia);
 }
 
 // rotulo de etapa: "1a etapa", "2o bimestre", "n1", "f1", "etapa 3"...

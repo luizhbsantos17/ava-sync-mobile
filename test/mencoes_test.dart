@@ -20,6 +20,10 @@ void main() {
     expect(marcaVoce(['role:r1'], eu: 'ava:1', meusCargos: ['r1']), isTrue);
     expect(marcaVoce(['role:r2', 'ava:2'], eu: 'ava:1', meusCargos: ['r1']), isFalse);
     expect(marcaVoce(['ava:1'], eu: ''), isFalse); // ainda não sabe quem é você
+    // "ignorar @todos" e "ignorar @cargos" do grupo: só a menção direta conta
+    expect(marcaVoce(['everyone'], eu: 'ava:1', ignorarTodos: true), isFalse);
+    expect(marcaVoce(['role:r1'], eu: 'ava:1', meusCargos: ['r1'], ignorarCargos: true), isFalse);
+    expect(marcaVoce(['ava:1', 'everyone'], eu: 'ava:1', ignorarTodos: true), isTrue);
   });
 
   test('notificação com menção fica destacada', () {

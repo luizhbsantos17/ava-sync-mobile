@@ -21,6 +21,35 @@ essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
 
+## [1.2.0] - 2026-11-16
+### Adicionado
+- **Canais de voz**, como no Discord: várias pessoas na mesma chamada, microfone,
+  "ensurdecer", câmera e **compartilhar a tela** (no computador dá para escolher a tela ou a
+  janela). Quem está falando aparece com um anel verde; a lista de canais mostra quem está
+  em cada chamada antes de entrar.
+- Barra "Voz conectada" no Social, com mudo, ensurdecer e sair, enquanto você usa o resto do app.
+- Na chamada: destacar o vídeo de alguém, volume de cada pessoa (só no seu aparelho),
+  escolher microfone e saída de som (computador) e, para quem modera, desconectar alguém.
+- Canal de voz com **limite de pessoas**. Ao criar canal, escolha "Texto" ou "Voz".
+- Áudio e vídeo **cifrados de ponta a ponta** com a chave do grupo: nem o servidor da
+  chamada consegue ouvir.
+### Alterado
+- **Presença calculada sobre o total do semestre** (a carga horária), que é o que decide
+  reprovar por falta. O % sobre as aulas já dadas continua aparecendo como detalhe.
+- **Aulas do dia** mostram quantos dias você ainda pode faltar daquela matéria (ou se não
+  pode mais), no lugar de "2 faltas".
+- **App mais leve**: o Social só se atualiza sozinho com a tela dele aberta; fotos e
+  imagens são carregadas no tamanho em que aparecem; listas longas (novidades) montam só o
+  que está na tela; os dados salvos grandes são lidos e gravados sem travar a tela.
+### Corrigido
+- Sair de uma conversa podia deixar a última mensagem como não lida.
+- Quem marcou "ignorar @todos" ou "ignorar @cargos" ainda recebia o aviso como menção.
+- Duas gravações dos dados ao mesmo tempo podiam falhar; agora esperam uma a outra.
+- A sincronização deixava conexões abertas, e cada imagem de conteúdo do AVA abria uma nova.
+- O simulador de faltas ignorava a frequência mínima informada pelo Q-Acadêmico.
+- A **turma de ingresso** (ex.: 2024/2) não aparecia para quase ninguém: agora vem do login
+  do AVA, do número de identificação do AVA ou da matrícula do Q-Acadêmico, ao abrir o Social.
+
 ## [1.1.0] - 2026-11-16
 ### Adicionado
 - **Social mais fluido**: telas, listas, menus e botões com animação; resposta ao toque

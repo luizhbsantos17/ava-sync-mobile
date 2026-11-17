@@ -116,6 +116,13 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
     unawaited(social.saveDraft(widget.canal.id, _editando == null ? _texto.text : ''));
     if (social.activeChannelId == widget.canal.id) social.activeChannelId = null;
     if (_texto.text.isNotEmpty) feed.typingNow(active: false);
+    // a leitura é limitada a uma a cada 3 s: ao sair, marca de novo para não ficar
+    // "não lida" a última mensagem que chegou com a conversa aberta (fora do build)
+    final conversa = widget.conversa.id, canal = widget.canal.id;
+    Future(() {
+      social.markChannelSeen(conversa, canal);
+      unawaited(social.api.call('read', {'channelId': canal}).catchError((_) => null));
+    });
     feed.removeListener(_mudou);
     feed.dispose();
     _texto.dispose();
@@ -570,7 +577,7 @@ class _ChatTelaState extends State<ChatTela> with WidgetsBindingObserver {
       builder: (ctx) => SafeArea(
         child: ListView(shrinkWrap: true, children: [
           SecaoTitulo(c.nome),
-          for (final ch in c.channels)
+          for (final ch in c.channels.where((ch) => !ch.voz))
             ListTile(
               leading: Icon(ch.onlyAdmins ? Icons.campaign_outlined : Icons.tag_rounded),
               title: Text(ch.name, style: TextStyle(fontWeight: ch.unread > 0 ? FontWeight.w800 : FontWeight.w500)),
@@ -1508,6 +1515,7 @@ class _Anexo extends StatelessWidget {
             child: SocialImagem(
               path: a.path,
               conversationId: conversationId,
+              largura: w,
               placeholder: (_) => Container(color: cs.surfaceContainerHigh, child: const Center(child: SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)))),
             ),
           ),

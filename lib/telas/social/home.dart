@@ -13,6 +13,7 @@ import 'chat.dart';
 import 'grupo.dart';
 import 'painel.dart';
 import 'perfil.dart';
+import 'voz.dart';
 import 'widgets.dart';
 
 /// Entrada do Social: barra de grupos à esquerda (como no Discord), mensagens
@@ -56,6 +57,7 @@ class _SocialTelaState extends State<SocialTela> {
 
   @override
   void dispose() {
+    social.telaFechada();
     _chat.dispose();
     super.dispose();
   }
@@ -67,6 +69,7 @@ class _SocialTelaState extends State<SocialTela> {
     _chat.addListener(() {
       if (_aba != 0 && mounted) setState(() => _aba = 0);
     });
+    social.telaAberta();
     unawaited(_iniciar());
   }
 
@@ -135,7 +138,9 @@ class _SocialTelaState extends State<SocialTela> {
           }
           return Scaffold(
             body: corpo,
-            bottomNavigationBar: NavigationBar(
+            bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [
+              const BarraVoz(),
+              NavigationBar(
               height: 64,
               selectedIndex: _aba,
               labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
@@ -161,6 +166,7 @@ class _SocialTelaState extends State<SocialTela> {
                 ),
               ],
             ),
+            ]),
           );
         },
       ),
@@ -787,8 +793,10 @@ class _PainelGrupoState extends State<_PainelGrupo> {
 
   Future<void> _menuCanal(SocialChannel ch, Offset? pos) async {
     final admin = c.pode(Permissao.gerenciarCanais);
-    final op = await abrirMenu<String>(context, posicao: pos, titulo: '#${ch.name}', itens: [
-      const ItemMenu('abrir', 'Abrir', icone: Icons.open_in_new_rounded),
+    final op = await abrirMenu<String>(context, posicao: pos, titulo: ch.voz ? ch.name : '#${ch.name}', itens: [
+      ch.voz
+          ? ItemMenu('abrir', voz.estaEm(ch.id) ? 'Abrir a chamada' : 'Entrar na chamada', icone: Icons.call_rounded)
+          : const ItemMenu('abrir', 'Abrir', icone: Icons.open_in_new_rounded),
       if (ch.unread > 0) const ItemMenu('lido', 'Marcar como lido', icone: Icons.mark_chat_read_outlined),
       ItemMenu('notif', 'Notificações do grupo', icone: Icons.notifications_outlined, detalhe: c.notify.rotulo),
       const ItemMenu('copiar', 'Copiar nome do canal', icone: Icons.copy_rounded),
@@ -802,7 +810,7 @@ class _PainelGrupoState extends State<_PainelGrupo> {
     try {
       switch (op) {
         case 'abrir':
-          await abrirChat(context, c, ch);
+          await (ch.voz ? entrarNaVoz(context, c, ch) : abrirChat(context, c, ch));
         case 'lido':
           social.markChannelSeen(c.id, ch.id);
           unawaited(social.api.call('read', {'channelId': ch.id}).catchError((_) => null));
@@ -1049,17 +1057,18 @@ class _ItemCanal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final unread = ch.unread > 0 && c.notify != NotificarGrupo.nada;
+    final unread = !ch.voz && ch.unread > 0 && c.notify != NotificarGrupo.nada;
     final aberto = _aberto(context, ch.id);
-    return Tocavel(
+    final linha = Tocavel(
       margem: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       selecionado: aberto,
-      aoTocar: () => abrirChat(context, c, ch),
+      aoTocar: () => ch.voz ? entrarNaVoz(context, c, ch) : abrirChat(context, c, ch),
       aoMenu: aoMenu,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
         child: Row(children: [
-          Icon(ch.onlyAdmins ? Icons.campaign_outlined : Icons.tag_rounded, size: 21, color: unread || aberto ? cs.onSurface : cs.onSurfaceVariant),
+          Icon(ch.voz ? Icons.volume_up_rounded : (ch.onlyAdmins ? Icons.campaign_outlined : Icons.tag_rounded),
+              size: 21, color: unread || aberto ? cs.onSurface : cs.onSurfaceVariant),
           const SizedBox(width: 8),
           Expanded(
             child: AnimatedDefaultTextStyle(
@@ -1079,11 +1088,15 @@ class _ItemCanal extends StatelessWidget {
                 ? Contador(ch.mentions, key: ValueKey('m${ch.mentions}'))
                 : unread
                     ? Container(key: const ValueKey('ponto'), width: 8, height: 8, decoration: BoxDecoration(color: cs.onSurface, shape: BoxShape.circle))
-                    : const SizedBox.shrink(key: ValueKey('nada')),
+                    : ch.voz && ch.userLimit != null
+                        ? Text('${ch.naVoz.length}/${ch.userLimit}', key: const ValueKey('lim'), style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant))
+                        : const SizedBox.shrink(key: ValueKey('nada')),
           ),
         ]),
       ),
     );
+    if (!ch.voz) return linha;
+    return Column(mainAxisSize: MainAxisSize.min, children: [linha, PessoasDoCanal(c: c, ch: ch)]);
   }
 }
 
@@ -1113,7 +1126,9 @@ class _PainelChat extends StatelessWidget {
                   icone: Icons.forum_outlined,
                   titulo: 'Nenhuma conversa aberta',
                   texto: 'Escolha um canal ou uma mensagem direta na lista ao lado.')
-              : ChatTela(key: ValueKey('${c.id}:${canal.id}'), conversa: c, canal: canal),
+              : canal.voz
+                  ? const VozTela(key: ValueKey('voz'))
+                  : ChatTela(key: ValueKey('${c.id}:${canal.id}'), conversa: c, canal: canal),
         );
       },
     );

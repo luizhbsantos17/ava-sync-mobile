@@ -157,12 +157,23 @@ async function validateMoodle(site: URL, token: string) {
   const info = await moodleCall(site, token, "core_webservice_get_site_info") as Record<string, unknown>;
   const userId = Number(info.userid);
   if (!Number.isSafeInteger(userId) || userId <= 0) fail("Não foi possível identificar a conta do AVA.", 401);
-  return { userId, displayName: String(info.fullname ?? "Estudante").slice(0, 48), cohort: turmaDe(info.username) };
+  let cohort = turmaDe(info.username);
+  if (!cohort) {
+    // o login pode não ser a matrícula: tenta o "número de identificação" do aluno no AVA
+    try {
+      const u = await moodleCall(site, token, "core_user_get_users_by_field", { field: "id", values: [userId] });
+      const eu = Array.isArray(u) ? u[0] as Record<string, unknown> | undefined : undefined;
+      cohort = turmaDe(eu?.idnumber) ?? turmaDe(eu?.username);
+    } catch (_) {
+      // sem permissão para ler o próprio cadastro: fica sem turma
+    }
+  }
+  return { userId, displayName: String(info.fullname ?? "Estudante").slice(0, 48), cohort };
 }
 
-/// Turma de ingresso pelo usuário do AVA: "20242..." vira "2024/2". Outro formato: sem turma.
-export function turmaDe(username: unknown) {
-  const m = /^(20\d{2})([12])/.exec(String(username ?? "").trim());
+/// Turma de ingresso por uma matrícula: "20242..." vira "2024/2". Outro formato: sem turma.
+export function turmaDe(matricula: unknown) {
+  const m = /^(20\d{2})([12])/.exec(String(matricula ?? "").trim());
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
@@ -588,6 +599,63 @@ async function avisarMembros(conversationId: string, channelId: string, senderId
   }
 }
 
+// ---------------------------------------------------------------- voz (LiveKit)
+// Os segredos ficam na Edge Function: LIVEKIT_URL (wss://...), LIVEKIT_API_KEY e
+// LIVEKIT_API_SECRET. Sem eles, os canais de voz aparecem mas não conectam.
+const livekitUrl = Deno.env.get("LIVEKIT_URL") ?? "";
+const livekitKey = Deno.env.get("LIVEKIT_API_KEY") ?? "";
+const livekitSecret = Deno.env.get("LIVEKIT_API_SECRET") ?? "";
+const vozConfigurada = () => !!(livekitUrl && livekitKey && livekitSecret);
+const salaDe = (channelId: string) => `avasync-${channelId}`;
+const VOZ_VALIDADE_MS = 45_000;
+
+/// Token de acesso do LiveKit (JWT HS256) com a permissão `video` pedida.
+async function tokenLiveKit(identity: string, name: string, grant: Row, segundos = 6 * 3600) {
+  const agora = Math.floor(Date.now() / 1000);
+  const cab = b64url(enc.encode(JSON.stringify({ alg: "HS256", typ: "JWT" })));
+  const corpo = b64url(enc.encode(JSON.stringify({ iss: livekitKey, sub: identity, name, nbf: agora - 10, exp: agora + segundos, video: grant })));
+  const chave = await crypto.subtle.importKey("raw", enc.encode(livekitSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const assinatura = new Uint8Array(await crypto.subtle.sign("HMAC", chave, enc.encode(`${cab}.${corpo}`)));
+  return `${cab}.${corpo}.${b64url(assinatura)}`;
+}
+
+/// Tira alguém da sala no LiveKit (API do servidor).
+async function removerDaSala(room: string, identity: string) {
+  if (!vozConfigurada()) return;
+  const http = livekitUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:").replace(/\/+$/, "");
+  const token = await tokenLiveKit("avasync-servidor", "AVA Sync", { roomAdmin: true, room }, 120);
+  await fetch(`${http}/twirp/livekit.RoomService/RemoveParticipant`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ room, identity }),
+    signal: AbortSignal.timeout(8000),
+  }).catch(() => null);
+}
+
+async function canalDeVoz(channelId: unknown, userId: string) {
+  const ch = await getChannel(uuid(channelId, "Canal"));
+  if (ch.kind !== "voice") fail("Este não é um canal de voz.");
+  const eu = await poder(String(ch.conversation_id), userId);
+  if (!eu) fail("Você não participa deste grupo.", 403);
+  return { ch, eu: eu! };
+}
+
+/// Limite de pessoas num canal de voz: 2 a 99, ou sem limite.
+function limiteVoz(v: unknown) {
+  const n = Number(v);
+  return v !== null && v !== undefined && Number.isSafeInteger(n) && n >= 2 && n <= 99 ? n : null;
+}
+
+function estadoVoz(payload: Row) {
+  return {
+    muted: payload.muted === true,
+    deafened: payload.deafened === true,
+    video: payload.video === true,
+    screen: payload.screen === true,
+    expires_at: new Date(Date.now() + VOZ_VALIDADE_MS).toISOString(),
+  };
+}
+
 // ---------------------------------------------------------------- ações
 const moodleActions = new Set(["session", "me", "teacher_courses", "create_course_group"]);
 
@@ -595,7 +663,12 @@ type Ctx = { userId: string; payload: Row; site?: URL; token?: string; host?: st
 
 const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
   // --- sessão e compatibilidade
-  async session({ userId }) {
+  async session({ userId, moodle, payload }) {
+    // sem turma pelo AVA: usa a matrícula do Q-Acadêmico que o app mandou, só se ainda vazia
+    if (!moodle?.cohort) {
+      const c = turmaDe(payload.matricula);
+      if (c) await db(`social_profiles?user_key=eq.${q(userId)}&cohort=is.null`, "PATCH", { cohort: c }, "return=minimal");
+    }
     await touchSeen(userId);
     return { ...(await issueSession(userId)), me: shapeProfile(await myProfile(userId), true) };
   },
@@ -1109,6 +1182,53 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     return { ok: true };
   },
 
+  // --- voz (issue #3)
+  /// Entra num canal de voz: confere o grupo e o limite, marca presença e devolve o
+  /// endereço e o token do LiveKit. A pessoa só fica em um canal de voz por vez.
+  async voice_join({ userId, payload }) {
+    const { ch } = await canalDeVoz(payload.channelId, userId);
+    if (!vozConfigurada()) fail("Os canais de voz ainda não foram ligados no servidor. Avise o dono do app.", 503);
+    const agora = new Date().toISOString();
+    if (ch.user_limit) {
+      const dentro = await db(`social_voice_presence?channel_id=eq.${q(String(ch.id))}&expires_at=gt.${q(agora)}&user_key=neq.${q(userId)}&select=user_key`) as Row[];
+      if (dentro.length >= Number(ch.user_limit)) fail(`O canal está cheio (${ch.user_limit} pessoas).`);
+    }
+    await db(`social_voice_presence?user_key=eq.${q(userId)}&channel_id=neq.${q(String(ch.id))}`, "DELETE", undefined, "return=minimal");
+    await db("social_voice_presence?on_conflict=channel_id,user_key", "POST",
+      { channel_id: ch.id, user_key: userId, joined_at: agora, ...estadoVoz(payload) }, "resolution=merge-duplicates,return=minimal");
+    const room = salaDe(String(ch.id));
+    const token = await tokenLiveKit(userId, await nomeDe(userId), {
+      room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true,
+    });
+    return { url: livekitUrl, token, room };
+  },
+
+  /// Renova a presença e conta se está mudo, surdo, com câmera ou tela (a cada ~20 s).
+  async voice_state({ userId, payload }) {
+    const { ch } = await canalDeVoz(payload.channelId, userId);
+    await db("social_voice_presence?on_conflict=channel_id,user_key", "POST",
+      { channel_id: ch.id, user_key: userId, ...estadoVoz(payload) }, "resolution=merge-duplicates,return=minimal");
+    return { ok: true };
+  },
+
+  async voice_leave({ userId, payload }) {
+    const filtro = isUuid(payload.channelId) ? `&channel_id=eq.${q(String(payload.channelId))}` : "";
+    await db(`social_voice_presence?user_key=eq.${q(userId)}${filtro}`, "DELETE", undefined, "return=minimal");
+    return { ok: true };
+  },
+
+  /// Moderação: desconecta alguém do canal de voz (quem pode remover membros).
+  async voice_disconnect({ userId, payload }) {
+    const { ch, eu } = await canalDeVoz(payload.channelId, userId);
+    if (!eu.perms.has("expulsar")) fail("Você não tem permissão para desconectar pessoas.", 403);
+    const target = str(payload.userKey, 120);
+    const ele = await poder(String(ch.conversation_id), target);
+    if (ele && ele.rank >= eu.rank && target !== userId) fail("Você não pode desconectar alguém com cargo igual ou maior.");
+    await db(`social_voice_presence?channel_id=eq.${q(String(ch.id))}&user_key=eq.${q(target)}`, "DELETE", undefined, "return=minimal");
+    await removerDaSala(salaDe(String(ch.id)), target);
+    return { ok: true };
+  },
+
   // --- canais
   async create_channel({ userId, payload }) {
     const id = uuid(payload.conversationId, "Grupo");
@@ -1122,6 +1242,8 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     const rows = await db("social_channels", "POST", {
       conversation_id: id, name, topic: optStr(payload.topic, 200) ?? null, position: existing.length, only_admins: payload.onlyAdmins === true,
       category_id: await categoriaDoGrupo(id, payload.categoryId),
+      kind: payload.kind === "voice" ? "voice" : "text",
+      user_limit: limiteVoz(payload.userLimit),
     }, "return=representation") as Row[];
     return rows[0];
   },
@@ -1140,6 +1262,7 @@ const actions: Record<string, (ctx: Ctx) => Promise<unknown>> = {
     if (topic !== undefined) patch.topic = topic;
     if (typeof payload.onlyAdmins === "boolean") patch.only_admins = payload.onlyAdmins;
     if (Number.isSafeInteger(payload.position)) patch.position = payload.position;
+    if (payload.userLimit !== undefined) patch.user_limit = limiteVoz(payload.userLimit);
     if (Object.keys(patch).length) await db(`social_channels?id=eq.${q(String(ch.id))}`, "PATCH", patch, "return=minimal");
     return { ok: true };
   },

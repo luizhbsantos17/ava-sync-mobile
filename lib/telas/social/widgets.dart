@@ -105,7 +105,10 @@ class SocialImagem extends StatefulWidget {
   final String? conversationId;
   final BoxFit fit;
   final Widget Function(BuildContext context) placeholder;
-  const SocialImagem({super.key, required this.path, this.conversationId, this.fit = BoxFit.cover, required this.placeholder});
+
+  /// Largura lógica em que a imagem aparece: decodifica só o necessário.
+  final double? largura;
+  const SocialImagem({super.key, required this.path, this.conversationId, this.fit = BoxFit.cover, required this.placeholder, this.largura});
 
   @override
   State<SocialImagem> createState() => _SocialImagemState();
@@ -139,7 +142,9 @@ class _SocialImagemState extends State<SocialImagem> {
   Widget build(BuildContext context) {
     final b = _bytes;
     if (b == null) return widget.placeholder(context);
-    return Image.memory(b, fit: widget.fit, gaplessPlayback: true, errorBuilder: (c, _, _) => widget.placeholder(c));
+    final l = widget.largura;
+    final cache = l == null ? null : (l * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(16, 2400);
+    return Image.memory(b, fit: widget.fit, gaplessPlayback: true, cacheWidth: cache, errorBuilder: (c, _, _) => widget.placeholder(c));
   }
 }
 
@@ -211,7 +216,7 @@ class SocialAvatar extends StatelessWidget {
     final img = ClipOval(
       child: SizedBox.square(
         dimension: size,
-        child: profile.avatarPath == null ? base(context) : SocialImagem(path: profile.avatarPath!, placeholder: base),
+        child: profile.avatarPath == null ? base(context) : SocialImagem(path: profile.avatarPath!, placeholder: base, largura: size),
       ),
     );
     if (!presenca) return img;
@@ -296,7 +301,7 @@ class IconeGrupo extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(borderRadius: raio),
       clipBehavior: Clip.antiAlias,
-      child: conversa.iconPath == null ? base(context) : SocialImagem(path: conversa.iconPath!, placeholder: base),
+      child: conversa.iconPath == null ? base(context) : SocialImagem(path: conversa.iconPath!, placeholder: base, largura: size),
     );
   }
 }

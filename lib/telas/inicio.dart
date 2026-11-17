@@ -458,26 +458,30 @@ class NovidadesAba extends StatelessWidget {
           'nota' => Icons.grade_outlined,
           _ => Icons.info_outline,
         };
-    return _atualizavel(ListView(
+    // dia (cabeçalho) seguido das novidades dele, numa lista só, montada aos poucos
+    final linhas = <Object>[
+      for (final d in porDia.entries) ...[d.key, ...d.value],
+    ];
+    final estiloDia = Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary);
+    return _atualizavel(ListView.builder(
       padding: const EdgeInsets.only(bottom: 24),
-      children: [
-        for (final d in porDia.entries) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child: Text(d.key, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
-          ),
-          for (final h in d.value)
-            ListTile(
-              dense: true,
-              leading: Icon(icone(h['tipo'])),
-              title: Text('${h['texto']}'),
-              subtitle: '${h['curso'] ?? ''}'.isEmpty ? null : Text('${h['curso']}'),
-              onTap: h['tarefaId'] == null
-                  ? null
-                  : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TarefaTela(tarefaId: h['tarefaId']))),
-            ),
-        ],
-      ],
+      itemCount: linhas.length,
+      itemBuilder: (context, i) {
+        final x = linhas[i];
+        if (x is String) {
+          return Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 4), child: Text(x, style: estiloDia));
+        }
+        final h = x as Map<String, dynamic>;
+        return ListTile(
+          dense: true,
+          leading: Icon(icone(h['tipo'])),
+          title: Text('${h['texto']}'),
+          subtitle: '${h['curso'] ?? ''}'.isEmpty ? null : Text('${h['curso']}'),
+          onTap: h['tarefaId'] == null
+              ? null
+              : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TarefaTela(tarefaId: h['tarefaId']))),
+        );
+      },
     ));
   }
 }
@@ -496,9 +500,10 @@ class ListaItensTela extends StatelessWidget {
       appBar: AppBar(title: Text(titulo)),
       body: itens.isEmpty
           ? Vazio(Icons.celebration_outlined, vazio)
-          : ListView(
+          : ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              children: [for (final it in itens) Card(child: ItemLinha(it, mostrarCurso: true))],
+              itemCount: itens.length,
+              itemBuilder: (context, i) => Card(child: ItemLinha(itens[i], mostrarCurso: true)),
             ),
     );
   }

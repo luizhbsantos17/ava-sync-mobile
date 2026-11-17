@@ -167,6 +167,26 @@ enum NotificarGrupo {
       NotificarGrupo.values.firstWhere((n) => n.id == v, orElse: () => muted ? NotificarGrupo.mencoes : NotificarGrupo.tudo);
 }
 
+/// Quem está num canal de voz (vem do servidor; a chamada em si é no LiveKit).
+class PresencaVoz {
+  final String userKey;
+  final bool muted;
+  final bool deafened;
+  final bool video;
+  final bool screen;
+  final DateTime? joinedAt;
+  const PresencaVoz({required this.userKey, this.muted = false, this.deafened = false, this.video = false, this.screen = false, this.joinedAt});
+
+  factory PresencaVoz.fromJson(Map<String, dynamic> j) => PresencaVoz(
+        userKey: '${j['user_key']}',
+        muted: j['muted'] == true,
+        deafened: j['deafened'] == true,
+        video: j['video'] == true,
+        screen: j['screen'] == true,
+        joinedAt: _date(j['joined_at']),
+      );
+}
+
 class SocialCategory {
   final String id;
   final String name;
@@ -192,6 +212,13 @@ class SocialChannel {
   /// Até onde li (para "pular para a primeira não lida").
   final DateTime? lastReadAt;
 
+  /// Canal de voz (chamada) em vez de texto.
+  final bool voz;
+  final int? userLimit;
+
+  /// Quem está na chamada agora (só canais de voz).
+  final List<PresencaVoz> naVoz;
+
   const SocialChannel({
     required this.id,
     required this.conversationId,
@@ -204,6 +231,9 @@ class SocialChannel {
     this.mentions = 0,
     this.lastAt,
     this.lastReadAt,
+    this.voz = false,
+    this.userLimit,
+    this.naVoz = const [],
   });
 
   SocialChannel copyWith({String? categoryId, bool clearCategory = false, int? position, int? unread, int? mentions, String? name}) => SocialChannel(
@@ -218,6 +248,9 @@ class SocialChannel {
         mentions: mentions ?? this.mentions,
         lastAt: lastAt,
         lastReadAt: lastReadAt,
+        voz: voz,
+        userLimit: userLimit,
+        naVoz: naVoz,
       );
 
   factory SocialChannel.fromJson(Map<String, dynamic> j, String conversationId) => SocialChannel(
@@ -232,6 +265,9 @@ class SocialChannel {
         mentions: _int(j['mentions']),
         lastAt: _date(j['last_at']),
         lastReadAt: _date(j['last_read_at']),
+        voz: j['kind'] == 'voice',
+        userLimit: j['user_limit'] is num ? (j['user_limit'] as num).toInt() : null,
+        naVoz: [for (final v in (j['voice'] as List? ?? const [])) PresencaVoz.fromJson(Map<String, dynamic>.from(v as Map))],
       );
 }
 
@@ -296,7 +332,7 @@ class SocialConversation {
   String get nome => direta ? (peer?.displayName ?? 'Conversa') : title;
   int get unread => channels.fold(0, (s, c) => s + c.unread);
   int get mentions => channels.fold(0, (s, c) => s + c.mentions);
-  SocialChannel? get primeiroCanal => channels.isEmpty ? null : channels.first;
+  SocialChannel? get primeiroCanal => channels.where((c) => !c.voz).firstOrNull ?? (channels.isEmpty ? null : channels.first);
 
   /// Pode fazer isto neste grupo? Dono e admin podem tudo; os outros, pelo cargo.
   bool pode(Permissao p) => role.gerencia || myPerms.contains(p.id);

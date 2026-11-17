@@ -23,8 +23,9 @@ class MoodleErro implements Exception {
 class Moodle {
   final String site;
   final String token;
-  final http.Client c;
-  Moodle(this.site, this.token, {http.Client? cliente}) : c = cliente ?? http.Client();
+  final http.Client? cliente;
+  late final http.Client c = cliente ?? http.Client();
+  Moodle(this.site, this.token, {this.cliente});
 
   String get host => Uri.parse(site).host.toLowerCase();
   bool ehDoSite(String url) => (Uri.tryParse(url)?.host.toLowerCase() ?? '') == host;

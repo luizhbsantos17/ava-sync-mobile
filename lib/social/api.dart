@@ -57,7 +57,13 @@ class SocialApi {
       try {
         final token = await _moodleToken();
         if (token == null || Cfg.site.isEmpty) throw const SocialApiException('Entre no AVA para usar o Social.', 401);
-        final r = Map<String, dynamic>.from(await _post({'action': 'session', 'site': Cfg.site, 'token': token}) as Map);
+        final r = Map<String, dynamic>.from(await _post({
+          'action': 'session',
+          'site': Cfg.site,
+          'token': token,
+          // matrícula do Q-Acadêmico: o servidor tira a turma (2024/2) se o AVA não der
+          'payload': {if (Cfg.qaLogin.isNotEmpty) 'matricula': Cfg.qaLogin},
+        }) as Map);
         _session = '${r['session']}';
         _expiresAt = (r['expiresAt'] as num).toInt();
         lastMe = r['me'] is Map ? Map<String, dynamic>.from(r['me'] as Map) : null;

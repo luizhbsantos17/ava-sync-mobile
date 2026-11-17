@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:path_provider/path_provider.dart';
 
@@ -88,20 +89,37 @@ class Store {
     return _dados!;
   }
 
+  /// Acima disso o JSON é lido/escrito em outro isolate (não trava a tela).
+  static const _grande = 64 * 1024;
+
   static Future<Map<String, dynamic>> lerJson(String nome) async {
     final f = File('${(await dados()).path}/$nome');
     if (!await f.exists()) return {};
     try {
-      return mapa(jsonDecode(await f.readAsString()));
+      final texto = await f.readAsString();
+      return mapa(texto.length > _grande ? await Isolate.run(() => jsonDecode(texto)) : jsonDecode(texto));
     } catch (_) {
       return {};
     }
   }
 
-  static Future<void> gravarJson(String nome, Map<String, dynamic> d) async {
+  static final Map<String, Future<void>> _filas = {};
+
+  /// Grava de forma atômica (arquivo temporário + rename). Gravações do mesmo arquivo
+  /// esperam a anterior: antes, duas ao mesmo tempo podiam usar o mesmo .tmp.
+  static Future<void> gravarJson(String nome, Map<String, dynamic> d) {
+    final anterior = _filas[nome] ?? Future<void>.value();
+    final esta = anterior.catchError((_) {}).then((_) => _gravar(nome, d));
+    _filas[nome] = esta;
+    return esta;
+  }
+
+  static Future<void> _gravar(String nome, Map<String, dynamic> d) async {
     final f = File('${(await dados()).path}/$nome');
     final tmp = File('${f.path}.tmp');
-    await tmp.writeAsString(jsonEncode(d));
+    final copia = Map<String, dynamic>.of(d);
+    final texto = copia.length > 50 ? await Isolate.run(() => jsonEncode(copia)) : jsonEncode(copia);
+    await tmp.writeAsString(texto, flush: true);
     await tmp.rename(f.path);
   }
 
