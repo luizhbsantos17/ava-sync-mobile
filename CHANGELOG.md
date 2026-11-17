@@ -20,6 +20,8 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+
+## [1.2.0] - 2026-11-16
 ### Adicionado
 - **Canais de voz**, como no Discord: várias pessoas na mesma chamada, microfone,
   "ensurdecer", câmera e **compartilhar a tela** (no computador dá para escolher a tela ou a

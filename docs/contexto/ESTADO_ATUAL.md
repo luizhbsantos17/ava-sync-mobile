@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-16 (1.1.0 lançada; canais de voz na branch `feature/canais-voz`)
+Última atualização: 2026-11-16 (1.2.0 lançada: canais de voz, presença sobre o total, turma de ingresso; voz espera o LiveKit)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
