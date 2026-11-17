@@ -140,3 +140,9 @@ botão manual buscam todas.
 **Decisão:** o APK é publicado pelo GitHub Actions na release `latest`, assinado com
 uma chave fixa guardada nos secrets do repositório.
 **Por quê:** atualizar por cima sem desinstalar, sem custo de loja ou servidor.
+
+## Presença sobre o total do semestre (2026-11-16)
+O % principal de presença é `1 - faltas / total de aulas do semestre` (carga horária em aulas
+de 50 min), não o % do Q-Acadêmico (sobre aulas já dadas). Reprovar por falta depende do total,
+então esse é o número útil. O % do Q-Acadêmico fica em `Frequencia.percentualDadas` e só vira o
+principal quando não há carga horária. As aulas do dia mostram "pode faltar mais N dias".

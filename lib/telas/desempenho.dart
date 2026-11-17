@@ -228,7 +228,7 @@ class _DisciplinaCardState extends State<_DisciplinaCard> {
               Row(children: [
                 _Metrica(
                     valor: '${_num(faltas)}${f.limite == null ? '' : '/${f.limite}'}', rotulo: 'faltas', cor: cf),
-                _Metrica(valor: _pct(f.percentual), rotulo: 'presença', cor: cf),
+                _Metrica(valor: _pct(f.percentual), rotulo: 'presença no total', cor: cf),
                 _Metrica(
                   valor: dias == null ? '-' : (dias < 0 ? 'passou' : '$dias'),
                   rotulo: dias == null
@@ -258,6 +258,7 @@ class _DisciplinaCardState extends State<_DisciplinaCard> {
                     ? 'Sem carga horária no boletim para calcular o limite.'
                     : f.restantes! >= 0
                         ? 'Ainda pode ter ${f.restantes} falta(s) · cada dia de aula = ${f.aulasPorDia} falta(s)'
+                            '${f.percentualDadas == null ? '' : ' · ${_pct(f.percentualDadas)} das aulas já dadas'}'
                         : 'Passou ${-f.restantes!} falta(s) do limite',
                 style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
               ),
@@ -430,7 +431,12 @@ class _Simulador extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final extra = dias * f.aulasPorDia;
     final sim = app.freqDe(Disciplina(
-        nome: d.nome, carga: d.carga, aulas: d.aulas, faltas: (d.faltas ?? 0) + extra, frequencia: dias == 0 ? d.frequencia : null));
+        nome: d.nome,
+        carga: d.carga,
+        aulas: d.aulas,
+        faltas: (d.faltas ?? 0) + extra,
+        minima: d.minima,
+        frequencia: dias == 0 ? d.frequencia : null));
     final cor = corFaltas(sim, cs);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
