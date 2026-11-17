@@ -21,6 +21,11 @@ essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
 
+## [1.2.3] - 2026-11-17
+### Corrigido
+- **Compartilhar a tela no computador** não funcionava (erro "Null check operator"). Agora
+  abre uma janela própria para escolher a tela inteira ou uma janela, com miniaturas.
+
 ## [1.2.2] - 2026-11-17
 ### Alterado
 - Quando a câmera ou o compartilhamento de tela falham na chamada, aparece uma janela com o
