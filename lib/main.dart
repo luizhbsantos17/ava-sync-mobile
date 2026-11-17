@@ -15,6 +15,7 @@ import 'social/escuta.dart';
 import 'social/push.dart';
 import 'tema.dart';
 import 'util.dart';
+import 'telas/ajustes.dart';
 import 'telas/atualizar.dart';
 import 'telas/inicio.dart';
 import 'telas/login.dart';
@@ -31,6 +32,7 @@ Future<void> main(List<String> args) async {
     if (Plataforma.celular) await Workmanager().initialize(callbackDispatcher);
   } catch (_) {}
   if (Plataforma.desktop) await JanelaDesktop.instancia.iniciar(args);
+  app.escolherPastaInicial = _pastaInicial;
   runApp(const AvaSyncApp());
   await app.carregar();
   Notif.aoTocar = (payload) {
@@ -66,6 +68,17 @@ Future<void> main(List<String> args) async {
 }
 
 final navegador = GlobalKey<NavigatorState>();
+
+/// Computador: antes da primeira sincronização, pergunta onde salvar os arquivos.
+Future<void> _pastaInicial() async {
+  for (var i = 0; i < 40 && navegador.currentContext == null; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+  }
+  final ctx = navegador.currentContext;
+  if (ctx == null || !ctx.mounted) return;
+  JanelaDesktop.instancia.mostrar(); // pode estar só na bandeja
+  if (ctx.mounted) await perguntarPastaInicial(ctx);
+}
 
 /// Toque numa notificação do Social: abre a conversa.
 Future<void> _abrirSocial(String payload) async {

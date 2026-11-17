@@ -18,6 +18,68 @@ import '../salvar.dart';
 import '../util.dart';
 import 'atualizar.dart';
 
+/// Janela "aguarde" que não fecha sozinha; devolve a função que fecha.
+VoidCallback mostrarEspera(BuildContext context, String texto) {
+  final nav = Navigator.of(context, rootNavigator: true);
+  var aberta = true;
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => PopScope(
+      canPop: false,
+      child: AlertDialog(
+        content: Row(children: [
+          const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+          const SizedBox(width: 18),
+          Expanded(child: Text(texto)),
+        ]),
+      ),
+    ),
+  ).whenComplete(() => aberta = false);
+  return () {
+    if (aberta) nav.pop();
+  };
+}
+
+/// Computador, antes da primeira sincronização: onde salvar os arquivos baixados.
+Future<void> perguntarPastaInicial(BuildContext context) async {
+  final padrao = (await Store.base()).path;
+  while (true) {
+    if (!context.mounted) return;
+    final escolha = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.folder_open_rounded),
+        title: const Text('Onde salvar os arquivos?'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('O AVA Sync baixa os materiais das matérias (PDFs, páginas, anexos). '
+              'Escolha a pasta antes da primeira sincronização. Dá para trocar depois em Ajustes.'),
+          const SizedBox(height: 12),
+          Text('Pasta padrão:', style: Theme.of(ctx).textTheme.labelMedium),
+          SelectableText(padrao, style: Theme.of(ctx).textTheme.bodySmall),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Usar a padrão')),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, 'escolher'),
+            icon: const Icon(Icons.drive_folder_upload_rounded),
+            label: const Text('Escolher pasta'),
+          ),
+        ],
+      ),
+    );
+    if (escolha == 'escolher') {
+      final nova = await FilePicker.getDirectoryPath(dialogTitle: 'Onde salvar os arquivos do AVA Sync');
+      if (nova == null) continue; // cancelou o seletor: pergunta de novo
+      await Store.trocarPasta(nova, mover: true);
+    } else {
+      await Cfg.setPastaConfirmada(true);
+    }
+    return;
+  }
+}
+
 class AjustesAba extends StatefulWidget {
   const AjustesAba({super.key});
   @override
@@ -281,9 +343,13 @@ class _AjustesAbaState extends State<AjustesAba> {
         ],
       ),
     );
-    if (mover == null) return;
+    if (mover == null || !mounted) return;
+    // espera a sincronização em andamento e move os arquivos, com aviso na tela
+    final fechar = mostrarEspera(context, mover ? 'Movendo os arquivos...' : 'Trocando a pasta...');
     try {
       await Store.trocarPasta(nova, mover: mover);
+      app.snap = await Store.snapshot();
+      app.avisarMudanca();
       final d = await Store.base();
       final t = await Store.tamanho();
       if (mounted) {
@@ -294,6 +360,8 @@ class _AjustesAbaState extends State<AjustesAba> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível usar essa pasta: $e')));
+    } finally {
+      fechar();
     }
   }
 

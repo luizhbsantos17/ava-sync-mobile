@@ -62,6 +62,12 @@ class VozController extends ChangeNotifier {
   SocialConversation? conversa;
   SocialChannel? canal;
   String? erro;
+
+  /// Falha ao ligar câmera ou tela (a tela mostra e limpa).
+  String? falhaMidia;
+
+  /// Ligando a câmera ou a tela: o computador leva alguns segundos para abrir o dispositivo.
+  bool ligandoMidia = false;
   bool mudo = Cfg.vozMudo;
   bool surdo = false;
   bool _mudoAntesDeSurdo = false;
@@ -129,8 +135,6 @@ class VozController extends ChangeNotifier {
       estado = EstadoVoz.conectado;
       desde = DateTime.now();
       _batida = Timer.periodic(const Duration(seconds: 20), (_) => unawaited(_contar()));
-      // Android: segue ouvindo e falando com o app em segundo plano (serviço com notificação)
-      unawaited(_ligarSegundoPlano());
       unawaited(SocialService.instance.refresh());
     } catch (e) {
       erro = e is SocialApiException ? e.message : 'Não foi possível entrar na chamada: $e';
@@ -224,11 +228,15 @@ class VozController extends ChangeNotifier {
 
   Future<void> alternarCamera() async {
     final lp = _room?.localParticipant;
-    if (lp == null) return;
+    if (lp == null || ligandoMidia) return;
+    ligandoMidia = true;
+    notifyListeners();
     try {
       await lp.setCameraEnabled(!cameraLigada);
     } catch (e) {
-      erro = 'Não foi possível usar a câmera: $e';
+      falhaMidia = 'Não foi possível usar a câmera: $e';
+    } finally {
+      ligandoMidia = false;
     }
     notifyListeners();
     unawaited(_contar());
@@ -239,13 +247,16 @@ class VozController extends ChangeNotifier {
   /// segundo plano enquanto compartilha.
   Future<void> alternarTela(Future<String?> Function() escolher) async {
     final lp = _room?.localParticipant;
-    if (lp == null) return;
+    if (lp == null || ligandoMidia) return;
     try {
       if (telaLigada) {
         await lp.setScreenShareEnabled(false);
+        await _pararSegundoPlano();
       } else if (Plataforma.desktop) {
         final fonte = await escolher();
         if (fonte == null) return;
+        ligandoMidia = true;
+        notifyListeners();
         await lp.setScreenShareEnabled(true,
             screenShareCaptureOptions: ScreenShareCaptureOptions(sourceId: fonte, maxFrameRate: 15, params: VideoParametersPresets.screenShareH1080FPS15));
       } else {
@@ -254,12 +265,18 @@ class VozController extends ChangeNotifier {
         await lp.setScreenShareEnabled(true, captureScreenAudio: true);
       }
     } catch (e) {
-      erro = 'Não foi possível compartilhar a tela: $e';
+      falhaMidia = 'Não foi possível compartilhar a tela: $e';
+      if (!telaLigada) await _pararSegundoPlano();
+    } finally {
+      ligandoMidia = false;
     }
     notifyListeners();
     unawaited(_contar());
   }
 
+  /// Android: serviço com notificação do tipo "mediaProjection", obrigatório para capturar a
+  /// tela. Só pode subir DEPOIS de a pessoa autorizar a captura: antes disso o Android 14+
+  /// derruba o app (SecurityException no código nativo, que o Dart não consegue pegar).
   Future<void> _ligarSegundoPlano() async {
     if (!Plataforma.celular || _segundoPlano) return;
     final ok = await FlutterBackground.initialize(

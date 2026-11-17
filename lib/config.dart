@@ -68,6 +68,9 @@ class Cfg {
   /// subpasta "AVA Sync" dentro dela, para nunca misturar com outros arquivos.
   static String get pastaArquivos => _p.getString('pasta_arquivos') ?? '';
   static Future<void> setPastaArquivos(String v) => _p.setString('pasta_arquivos', v);
+  /// Computador: a pessoa já escolheu (ou confirmou) onde salvar antes de sincronizar.
+  static bool get pastaConfirmada => _p.getBool('pasta_confirmada') ?? false;
+  static Future<void> setPastaConfirmada(bool v) => _p.setBool('pasta_confirmada', v);
   /// Ao salvar um anexo do Social, perguntar onde (em vez de usar a pasta de downloads).
   static bool get perguntarOndeSalvar => _p.getBool('perguntar_onde_salvar') ?? true;
   static Future<void> setPerguntarOndeSalvar(bool v) => _p.setBool('perguntar_onde_salvar', v);
@@ -75,6 +78,9 @@ class Cfg {
   static List<String> get socialOrdemGrupos => _p.getStringList('social_ordem_grupos') ?? const [];
   static Future<void> setSocialOrdemGrupos(List<String> v) => _p.setStringList('social_ordem_grupos', v);
   /// Computador: lista de canais do Social recolhida e membros à direita.
+  /// Computador: menu principal (Prazos, Matérias...) só com os ícones.
+  static bool get menuRecolhido => _p.getBool('menu_recolhido') ?? false;
+  static Future<void> setMenuRecolhido(bool v) => _p.setBool('menu_recolhido', v);
   static bool get socialListaRecolhida => _p.getBool('social_lista_recolhida') ?? false;
   static Future<void> setSocialListaRecolhida(bool v) => _p.setBool('social_lista_recolhida', v);
   static bool get socialMembrosVisiveis => _p.getBool('social_membros_visiveis') ?? true;
