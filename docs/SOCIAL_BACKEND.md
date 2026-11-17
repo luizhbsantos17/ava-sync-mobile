@@ -119,4 +119,23 @@ Mensagem sem canal cai no primeiro canal da conversa (gatilho `social_message_de
   `banner_color` virou `bigint` (cor 0xAARRGGBB estourava o `integer`, issue #5).
 - `social_events` (amizade_pedido, amizade_aceita, adicionado, removido, banido, cargo):
   voltam em `inbox`/`notifications` como `events` e acordam o celular por push.
+- Menções (#7): `inbox`/`notifications` trazem também `roles` (nomes dos cargos marcados) e
+  os perfis de quem foi marcado, para o aparelho trocar "@usuário" pelo nome. Em grupo
+  silenciado, só mensagens com `mentions` ∩ {você, role:<seus cargos>} passam (filtro `ov`),
+  também no push.
 
+
+
+## Notificações por grupo (v4)
+
+Cada membro escolhe em `social_members.notify`: `all` (toda mensagem), `mentions` (só quando
+marcam: @você, @cargo seu e @todos — os dois últimos podem ser ignorados com
+`suppress_everyone` e `suppress_roles`) ou `none`. O push, a caixa de entrada (`inbox`) e o
+contador de menções do `social_overview` respeitam essas opções. `muted` fica igual a
+`notify <> 'all'` para o app antigo, e `set_member_prefs {muted}` vira `notify`.
+
+## Organizar canais (v4)
+
+`arrange_channels {conversationId, categoryIds[], channels:[{id, categoryId}]}` grava de uma
+vez a ordem das categorias e, na ordem da lista, a categoria e a posição de cada canal.
+Exige a permissão de gerenciar canais.

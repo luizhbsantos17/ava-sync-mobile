@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import '../config.dart';
 import 'api.dart';
 import 'escuta.dart';
+import 'formatacao.dart';
 import 'models.dart';
 import 'notificacoes.dart';
 import 'push.dart';
@@ -106,12 +107,24 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
         var c = SocialConversation.fromJson(j);
         if (c.peer != null) _profiles[c.peer!.userKey] = c.peer!;
         final hasKey = await SupabaseSocialCrypto.hasKey(c.id);
-        c = c.copyWith(hasKey: hasKey, preview: await _preview(j['last_message'], c, hasKey));
+        final last = j['last_message'];
+        final chave = last is Map ? '${last['id']}|${last['deleted_at']}|$hasKey' : 'vazio|${c.direta}';
+        var preview = _previewCache[c.id]?.chave == chave ? _previewCache[c.id]!.texto : null;
+        if (preview == null) {
+          preview = await _preview(last, c, hasKey);
+          _previewCache[c.id] = (chave: chave, texto: preview);
+        }
+        c = c.copyWith(hasKey: hasKey, preview: preview);
         list.add(c);
       }
       list.sort((a, b) => b.sortAt.compareTo(a.sortAt));
       _notifyNew(list);
-      conversations = list;
+      unawaited(Cfg.setSocialMeuId(me!.userKey));
+      unawaited(Cfg.setSocialMeusCargos({for (final c in list) if (c.myRoles.isNotEmpty) c.id: c.myRoles.toList()}));
+      final assinatura = _assinar(list, pendingFriends);
+      _mudouAlgo = _mudouAlgo || assinatura != _assinatura || error != null || !ready;
+      _assinatura = assinatura;
+      conversations = _ordenarGrupos(list);
       error = null;
       ready = true;
       unawaited(Cfg.setSocialUltimaNotif(DateTime.now().toUtc().toIso8601String()));
@@ -122,13 +135,133 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
         unawaited(_shareKeys(requests));
       }
     } on SocialApiException catch (e) {
+      _mudouAlgo = _mudouAlgo || error != e.message;
       error = e.message;
     } catch (e) {
+      _mudouAlgo = _mudouAlgo || error != '$e';
       error = '$e';
     } finally {
       loading = false;
-      notifyListeners();
+      if (_mudouAlgo || showLoading) notifyListeners();
+      _mudouAlgo = false;
     }
+  }
+
+  final Map<String, ({String chave, String texto})> _previewCache = {};
+  String _assinatura = '';
+  bool _mudouAlgo = true;
+
+  /// Resumo do que as telas mostram; igual ao anterior = nada a redesenhar.
+  String _assinar(List<SocialConversation> list, int pendentes) {
+    final b = StringBuffer('$pendentes|${me?.displayName}|${me?.avatarPath}|${me?.status}|${me?.customStatus}|${me?.bannerPath}|${me?.bannerColor}|');
+    for (final c in list) {
+      b.write('${c.id}:${c.title}:${c.preview}:${c.notify.id}:${c.iconPath}:${c.bannerPath}:${c.accentColor}:${c.memberCount}:${c.hasKey}:${c.role.name}:${c.myPerms.length}:${c.peer?.presence.name}:${c.peer?.avatarPath};');
+      for (final k in c.categories) {
+        b.write('k${k.id}${k.name}${k.position},');
+      }
+      for (final ch in c.channels) {
+        b.write('${ch.id}${ch.name}${ch.unread}/${ch.mentions}/${ch.position}/${ch.categoryId},');
+      }
+    }
+    return b.toString();
+  }
+
+  // ------------------------------------------------------------ ordem dos grupos
+  /// Grupos na ordem que a pessoa arrastou; os novos vão para o fim. DMs seguem por data.
+  List<SocialConversation> _ordenarGrupos(List<SocialConversation> list) {
+    final ordem = Cfg.socialOrdemGrupos;
+    if (ordem.isEmpty) return list;
+    final pos = {for (var i = 0; i < ordem.length; i++) ordem[i]: i};
+    final grupos = list.where((c) => !c.direta).toList();
+    final indice = {for (var i = 0; i < grupos.length; i++) grupos[i].id: i};
+    grupos.sort((a, b) => (pos[a.id] ?? 100000 + indice[a.id]!).compareTo(pos[b.id] ?? 100000 + indice[b.id]!));
+    return [...grupos, ...list.where((c) => c.direta)];
+  }
+
+  List<SocialConversation> get grupos => [for (final c in conversations) if (!c.direta) c];
+
+  Future<void> moverGrupo(int de, int para) async {
+    final g = grupos;
+    if (de < 0 || de >= g.length) return;
+    final item = g.removeAt(de);
+    g.insert(para.clamp(0, g.length), item);
+    await Cfg.setSocialOrdemGrupos([for (final c in g) c.id]);
+    conversations = [...g, ...conversations.where((c) => c.direta)];
+    notifyListeners();
+  }
+
+  // ------------------------------------------------------------ notificações por grupo
+  Future<void> setNotify(String conversationId, {NotificarGrupo? notify, bool? suppressEveryone, bool? suppressRoles}) async {
+    final antes = conversation(conversationId);
+    conversations = [
+      for (final c in conversations)
+        c.id == conversationId ? c.copyWith(notify: notify, suppressEveryone: suppressEveryone, suppressRoles: suppressRoles) : c,
+    ];
+    notifyListeners();
+    try {
+      await api.call('set_member_prefs', {
+        'conversationId': conversationId,
+        'notify': ?notify?.id,
+        'suppressEveryone': ?suppressEveryone,
+        'suppressRoles': ?suppressRoles,
+      });
+    } catch (e) {
+      if (antes != null) {
+        conversations = [for (final c in conversations) c.id == conversationId ? antes : c];
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
+  /// Marca todos os canais do grupo como lidos.
+  Future<void> marcarGrupoLido(String conversationId) async {
+    final c = conversation(conversationId);
+    if (c == null) return;
+    for (final ch in c.channels.where((ch) => ch.unread > 0 || ch.mentions > 0)) {
+      markChannelSeen(conversationId, ch.id);
+      unawaited(api.call('read', {'channelId': ch.id}).catchError((_) => null));
+    }
+  }
+
+  // ------------------------------------------------------------ arrastar canais
+  /// Nova arrumação: ordem das categorias e, para cada canal (na ordem), a categoria.
+  /// Aparece na hora; o servidor confirma em seguida.
+  Future<void> organizarCanais(String conversationId, List<String> categorias, List<({String id, String? categoria})> canais) async {
+    final c = conversation(conversationId);
+    if (c == null) return;
+    final porId = {for (final ch in c.channels) ch.id: ch};
+    final novos = <SocialChannel>[
+      for (var i = 0; i < canais.length; i++)
+        if (porId[canais[i].id] != null)
+          porId[canais[i].id]!.copyWith(position: i, categoryId: canais[i].categoria, clearCategory: canais[i].categoria == null),
+    ];
+    final cats = {for (final k in c.categories) k.id: k};
+    final novasCats = [
+      for (var i = 0; i < categorias.length; i++)
+        if (cats[categorias[i]] != null) SocialCategory(id: categorias[i], name: cats[categorias[i]]!.name, position: i),
+    ];
+    conversations = [for (final x in conversations) x.id == conversationId ? x.copyWith(channels: novos, categories: novasCats) : x];
+    notifyListeners();
+    try {
+      await api.call('arrange_channels', {
+        'conversationId': conversationId,
+        'categoryIds': categorias,
+        'channels': [for (final ch in canais) {'id': ch.id, 'categoryId': ch.categoria}],
+      });
+    } catch (e) {
+      conversations = [for (final x in conversations) x.id == conversationId ? c : x];
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// "@usuário" de quem já apareceu (membros, amigos) vira o nome de exibição.
+  String? _nomePorUsuario(String usuario) {
+    for (final p in _profiles.values) {
+      if (p.username.toLowerCase() == usuario) return p.displayName;
+    }
+    return null;
   }
 
   Future<String> _preview(dynamic last, SocialConversation c, bool hasKey) async {
@@ -140,7 +273,7 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
     if (!hasKey) return 'Mensagem protegida · aguardando a chave';
     try {
       final content = await SupabaseSocialCrypto.decryptRow(row);
-      var text = content.texto.replaceAll('\n', ' ');
+      var text = trocarMencoes(content.texto.replaceAll('\n', ' '), _nomePorUsuario);
       if (text.isEmpty && content.anexos.isNotEmpty) text = content.anexos.first.imagem ? '📷 Foto' : '📎 ${content.anexos.first.name}';
       return who.isEmpty ? text : '$who: $text';
     } catch (_) {
@@ -191,7 +324,7 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
     conversations = [
       for (final c in conversations)
         c.id == conversationId
-            ? c.copyWith(channels: [for (final ch in c.channels) ch.id == channelId ? SocialChannel(id: ch.id, conversationId: ch.conversationId, name: ch.name, topic: ch.topic, position: ch.position, onlyAdmins: ch.onlyAdmins, lastAt: ch.lastAt) : ch])
+            ? c.copyWith(channels: [for (final ch in c.channels) ch.id == channelId ? ch.copyWith(unread: 0, mentions: 0) : ch])
             : c,
     ];
     _lastUnread[channelId] = 0;
@@ -339,11 +472,9 @@ class SocialService extends ChangeNotifier with WidgetsBindingObserver {
     await refresh();
   }
 
-  Future<void> setMuted(String conversationId, bool muted) async {
-    conversations = [for (final c in conversations) c.id == conversationId ? c.copyWith(muted: muted) : c];
-    notifyListeners();
-    await api.call('set_member_prefs', {'conversationId': conversationId, 'muted': muted});
-  }
+  /// Silenciar = só menções (atalho para [setNotify]).
+  Future<void> setMuted(String conversationId, bool muted) =>
+      setNotify(conversationId, notify: muted ? NotificarGrupo.mencoes : NotificarGrupo.tudo);
 
   // ------------------------------------------------------------ imagens e arquivos
   final Map<String, ({String url, DateTime at})> _signed = {};

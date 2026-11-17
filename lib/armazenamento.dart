@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'config.dart';
+import 'plataforma.dart';
 import 'util.dart';
 
 /// Onde o app guarda as coisas.
@@ -16,9 +18,58 @@ class Store {
   static Directory? _base, _dados;
   static Directory? baseTeste; // usado nos testes
 
+  /// Pasta escolhida pela pessoa (só no computador), sempre com a subpasta "AVA Sync".
+  static Directory? pastaEscolhida() {
+    if (!Plataforma.desktop || Cfg.pastaArquivos.isEmpty) return null;
+    return Directory('${Cfg.pastaArquivos}${Platform.pathSeparator}AVA Sync');
+  }
+
+  /// Troca a pasta dos arquivos. Com [mover], leva os arquivos já baixados junto.
+  /// [nova] vazia volta para a pasta padrão.
+  static Future<void> trocarPasta(String nova, {bool mover = true}) async {
+    final antes = await base();
+    await Cfg.setPastaArquivos(nova);
+    _base = null;
+    final depois = await base();
+    if (!mover || antes.path == depois.path || !await antes.exists()) return;
+    await for (final e in antes.list(followLinks: false)) {
+      final destino = '${depois.path}${Platform.pathSeparator}${e.uri.pathSegments.where((s) => s.isNotEmpty).last}';
+      try {
+        await e.rename(destino);
+      } catch (_) {
+        // outro disco: copia e apaga
+        if (e is File) {
+          await e.copy(destino);
+          await e.delete();
+        } else if (e is Directory) {
+          await _copiarPasta(e, Directory(destino));
+          await e.delete(recursive: true);
+        }
+      }
+    }
+  }
+
+  static Future<void> _copiarPasta(Directory de, Directory para) async {
+    await para.create(recursive: true);
+    await for (final e in de.list(followLinks: false)) {
+      final nome = e.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (e is File) await e.copy('${para.path}${Platform.pathSeparator}$nome');
+      if (e is Directory) await _copiarPasta(e, Directory('${para.path}${Platform.pathSeparator}$nome'));
+    }
+  }
+
   static Future<Directory> base() async {
     if (baseTeste != null) return baseTeste!;
     if (_base != null) return _base!;
+    final escolhida = pastaEscolhida();
+    if (escolhida != null) {
+      try {
+        await escolhida.create(recursive: true);
+        return _base = escolhida;
+      } catch (_) {
+        // pasta sumiu (pendrive tirado, sem permissão): usa a padrão
+      }
+    }
     Directory? d;
     try {
       d = await getExternalStorageDirectory();

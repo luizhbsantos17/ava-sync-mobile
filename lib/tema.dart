@@ -167,6 +167,34 @@ class Tema {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(raioMenor)),
       ),
+      // barra de rolagem fina e arredondada que engrossa ao passar o mouse (computador)
+      scrollbarTheme: ScrollbarThemeData(
+        thickness: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.hovered) || s.contains(WidgetState.dragged) ? 8 : 4),
+        radius: const Radius.circular(8),
+        thumbColor: WidgetStateProperty.resolveWith((s) => scheme.onSurface.withValues(
+            alpha: s.contains(WidgetState.dragged) ? .5 : s.contains(WidgetState.hovered) ? .35 : .18)),
+        trackColor: const WidgetStatePropertyAll(Colors.transparent),
+        trackBorderColor: const WidgetStatePropertyAll(Colors.transparent),
+        crossAxisMargin: 2,
+        mainAxisMargin: 4,
+        interactive: true,
+      ),
+      // telas entram com um deslize suave, iguais no celular e no computador
+      pageTransitionsTheme: const PageTransitionsTheme(builders: {
+        TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+        TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+        TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+        TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
+      }),
+      popupMenuTheme: PopupMenuThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(raioMenor)),
+        elevation: 6,
+      ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(color: scheme.inverseSurface, borderRadius: BorderRadius.circular(6)),
+        textStyle: TextStyle(color: scheme.onInverseSurface, fontSize: 12.5, fontWeight: FontWeight.w600),
+        waitDuration: const Duration(milliseconds: 400),
+      ),
     );
     return base;
   }

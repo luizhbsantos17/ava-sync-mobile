@@ -21,6 +21,44 @@ essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
 
+## [1.1.0] - 2026-11-16
+### Adicionado
+- **Social mais fluido**: telas, listas, menus e botões com animação; resposta ao toque
+  e ao passar o mouse; a lista atualiza sem piscar e digitar não trava mais a conversa.
+- **Menu ao segurar ou com o botão direito** em grupos, canais, categorias, conversas,
+  membros, mensagens e anexos (marcar como lido, notificações, editar, excluir...).
+- **Arrastar para organizar**: a ordem dos grupos na barra lateral, os canais (inclusive
+  de uma categoria para outra) e as categorias. No celular, segure e arraste.
+- **Excluir canal** direto pelo menu do canal.
+- **Notificações por grupo**: todas as mensagens, só menções ou nada; e ignorar @todos
+  ou menções de cargos.
+- **@todos aparece nas sugestões** ao digitar @ (quem pode marcar todos) e **@all** também funciona.
+- **Pular para as não lidas**: ao abrir um canal, aviso "N mensagens novas desde..." com
+  botão para voltar até onde você parou de ler.
+- **Ir para a menção**: botão com @ e o número de vezes que te marcaram; leva direto à
+  mensagem, que pisca. Tocar numa resposta também leva à mensagem original.
+- **Turma de ingresso** (ex.: 2024/2) no perfil e na lista de membros, tirada do seu
+  usuário do AVA.
+- **Computador**: Enter envia (Shift+Enter pula linha), Esc cancela, seta para cima edita
+  a última mensagem; barra de ações ao passar o mouse na mensagem (reagir, responder);
+  lista lateral que recolhe (Ctrl+B); membros ao lado da conversa; barra de rolagem
+  mais fina e bonita.
+- **Computador: escolher onde salvar**: pasta dos arquivos baixados em Ajustes (com
+  opção de levar os que já estão lá) e "Salvar como…" em fotos e anexos do Social.
+- **Instalador do Windows**: escolher a pasta de instalação, instalar só para você ou
+  para todos e criar atalhos na área de trabalho e no Menu Iniciar.
+### Corrigido
+- Abrir um canal tirava ele da categoria até a próxima atualização.
+- **Menções mostram o nome**: na notificação, na busca e na prévia da conversa aparece
+  "@Mikame" (o nome do chat), e não mais o código "@ifes_...". A busca acha a mensagem
+  pelo nome de quem foi marcado.
+### Alterado
+- **Ser marcado chama mais atenção**: a notificação vem com 📣 e, no Android, num canal
+  próprio "Menções" com prioridade máxima (dá para escolher outro som). No chat, a
+  mensagem que marca você fica mais destacada.
+- **"Só menções" avisa quando marcam você** (@você, um @cargo seu ou @todos, conforme
+  as opções do grupo). Grupos silenciados antes viram "Só menções".
+
 ## [1.0.0] - 2026-11-16
 ### Adicionado
 - **AVA Sync para computador** (Windows, Linux e macOS): prazos, matérias, notas e o

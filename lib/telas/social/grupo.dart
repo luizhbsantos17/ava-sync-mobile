@@ -301,53 +301,7 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
   }
 
   Future<void> _canal({SocialChannel? canal}) async {
-    final nome = TextEditingController(text: canal?.name ?? '');
-    final topico = TextEditingController(text: canal?.topic ?? '');
-    var soAdmins = canal?.onlyAdmins ?? false;
-    String? categoria = canal?.categoryId;
-    final categorias = _i?.categories ?? const <SocialCategory>[];
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, set) => AlertDialog(
-          title: Text(canal == null ? 'Criar canal' : 'Editar canal'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: nome, autofocus: true, maxLength: 32, decoration: const InputDecoration(labelText: 'Nome', prefixIcon: Icon(Icons.tag_rounded))),
-            TextField(controller: topico, maxLength: 200, decoration: const InputDecoration(labelText: 'Tópico (opcional)')),
-            if (categorias.isNotEmpty)
-              DropdownButtonFormField<String?>(
-                initialValue: categorias.any((k) => k.id == categoria) ? categoria : null,
-                decoration: const InputDecoration(labelText: 'Categoria'),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('Sem categoria')),
-                  for (final k in categorias) DropdownMenuItem<String?>(value: k.id, child: Text(k.name)),
-                ],
-                onChanged: (v) => set(() => categoria = v),
-              ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Canal de avisos'),
-              subtitle: const Text('Só quem tem permissão escreve'),
-              value: soAdmins,
-              onChanged: (v) => set(() => soAdmins = v),
-            ),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(canal == null ? 'Criar' : 'Salvar')),
-          ],
-        ),
-      ),
-    );
-    if (ok == true && nome.text.trim().isNotEmpty) {
-      await _fazer(() => canal == null
-          ? social.groupAction('create_channel',
-              {'conversationId': _id, 'name': nome.text, 'topic': topico.text, 'onlyAdmins': soAdmins, 'categoryId': categoria})
-          : social.groupAction('update_channel',
-              {'channelId': canal.id, 'name': nome.text, 'topic': topico.text, 'onlyAdmins': soAdmins, 'categoryId': categoria}));
-    }
-    nome.dispose();
-    topico.dispose();
+    await _fazer(() => dialogoCanal(context, conversationId: _id, categorias: _i?.categories ?? const [], canal: canal));
   }
 
   Future<void> _mover(int de, int para) async {
@@ -535,12 +489,19 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
               child: FilledButton.icon(onPressed: () => convidarPessoas(context, _id, c.title), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Convidar pessoas')),
             ),
           const SecaoTitulo('Você'),
-          SwitchListTile(
-            secondary: Icon(i.muted ? Icons.notifications_off_outlined : Icons.notifications_outlined),
-            title: const Text('Silenciar grupo'),
-            subtitle: const Text('Sem notificações nem contador'),
-            value: i.muted,
-            onChanged: (v) => _fazer(() => social.setMuted(_id, v)),
+          ListTile(
+            leading: Icon(switch (social.conversation(_id)?.notify ?? i.conversation.notify) {
+              NotificarGrupo.tudo => Icons.notifications_outlined,
+              NotificarGrupo.mencoes => Icons.alternate_email_rounded,
+              NotificarGrupo.nada => Icons.notifications_off_outlined,
+            }),
+            title: const Text('Notificações'),
+            subtitle: Text((social.conversation(_id)?.notify ?? i.conversation.notify).rotulo),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () async {
+              await configurarNotificacoes(context, social.conversation(_id) ?? i.conversation);
+              if (mounted) setState(() {});
+            },
           ),
           ListTile(
             leading: const Icon(Icons.badge_outlined),
@@ -824,4 +785,62 @@ class _GrupoConfigTelaState extends State<GrupoConfigTela> {
       ),
     );
   }
+}
+
+
+/// Criar ou editar um canal (nome, tópico, categoria, avisos). Devolve true se salvou.
+Future<bool> dialogoCanal(BuildContext context,
+    {required String conversationId, required List<SocialCategory> categorias, SocialChannel? canal, String? categoriaInicial}) async {
+  final nome = TextEditingController(text: canal?.name ?? '');
+  final topico = TextEditingController(text: canal?.topic ?? '');
+  var soAdmins = canal?.onlyAdmins ?? false;
+  String? categoria = canal?.categoryId ?? categoriaInicial;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, set) => AlertDialog(
+        title: Text(canal == null ? 'Criar canal' : 'Editar canal'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: nome,
+            autofocus: true,
+            maxLength: 32,
+            decoration: const InputDecoration(labelText: 'Nome', prefixIcon: Icon(Icons.tag_rounded)),
+            onSubmitted: (_) => Navigator.pop(ctx, true),
+          ),
+          TextField(controller: topico, maxLength: 200, decoration: const InputDecoration(labelText: 'Tópico (opcional)')),
+          if (categorias.isNotEmpty)
+            DropdownButtonFormField<String?>(
+              initialValue: categorias.any((k) => k.id == categoria) ? categoria : null,
+              decoration: const InputDecoration(labelText: 'Categoria'),
+              items: [
+                const DropdownMenuItem<String?>(value: null, child: Text('Sem categoria')),
+                for (final k in categorias) DropdownMenuItem<String?>(value: k.id, child: Text(k.name)),
+              ],
+              onChanged: (v) => set(() => categoria = v),
+            ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Canal de avisos'),
+            subtitle: const Text('Só quem tem permissão escreve'),
+            value: soAdmins,
+            onChanged: (v) => set(() => soAdmins = v),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(canal == null ? 'Criar' : 'Salvar')),
+        ],
+      ),
+    ),
+  );
+  final salvar = ok == true && nome.text.trim().isNotEmpty;
+  final dados = {'name': nome.text, 'topic': topico.text, 'onlyAdmins': soAdmins, 'categoryId': categoria};
+  nome.dispose();
+  topico.dispose();
+  if (!salvar) return false;
+  await (canal == null
+      ? social.groupAction('create_channel', {'conversationId': conversationId, ...dados})
+      : social.groupAction('update_channel', {'channelId': canal.id, ...dados}));
+  return true;
 }

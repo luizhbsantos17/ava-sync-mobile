@@ -37,6 +37,9 @@ class SocialProfile {
   final DateTime? lastSeen;
   final DateTime? createdAt;
 
+  /// Turma de ingresso (ex.: "2024/2"), tirada do usuário do AVA pelo servidor. Não muda.
+  final String? cohort;
+
   const SocialProfile({
     required this.userKey,
     required this.username,
@@ -52,6 +55,7 @@ class SocialProfile {
     this.status,
     this.lastSeen,
     this.createdAt,
+    this.cohort,
   });
 
   factory SocialProfile.fromJson(Map<String, dynamic> j) => SocialProfile(
@@ -69,6 +73,7 @@ class SocialProfile {
         status: j['status'] == null ? null : Presenca.de(j['status'] as String?),
         lastSeen: _date(j['last_seen']),
         createdAt: _date(j['created_at']),
+        cohort: _str(j['cohort']),
       );
 
   static SocialProfile placeholder(String key) => SocialProfile(userKey: key, username: '', displayName: 'Colega');
@@ -147,6 +152,21 @@ class SocialRole {
 }
 
 /// Categoria de canais ("Canais gerais", "Estudo").
+/// O que avisar de um grupo: toda mensagem, só quando me marcam ou nada.
+enum NotificarGrupo {
+  tudo('all', 'Todas as mensagens', 'Avisa toda mensagem nova'),
+  mencoes('mentions', 'Só menções', 'Só quando marcam você, um cargo seu ou @todos'),
+  nada('none', 'Nada', 'Nenhuma notificação deste grupo');
+
+  final String id;
+  final String rotulo;
+  final String descricao;
+  const NotificarGrupo(this.id, this.rotulo, this.descricao);
+
+  static NotificarGrupo de(dynamic v, {bool muted = false}) =>
+      NotificarGrupo.values.firstWhere((n) => n.id == v, orElse: () => muted ? NotificarGrupo.mencoes : NotificarGrupo.tudo);
+}
+
 class SocialCategory {
   final String id;
   final String name;
@@ -169,6 +189,9 @@ class SocialChannel {
   final int mentions;
   final DateTime? lastAt;
 
+  /// Até onde li (para "pular para a primeira não lida").
+  final DateTime? lastReadAt;
+
   const SocialChannel({
     required this.id,
     required this.conversationId,
@@ -180,7 +203,22 @@ class SocialChannel {
     this.unread = 0,
     this.mentions = 0,
     this.lastAt,
+    this.lastReadAt,
   });
+
+  SocialChannel copyWith({String? categoryId, bool clearCategory = false, int? position, int? unread, int? mentions, String? name}) => SocialChannel(
+        id: id,
+        conversationId: conversationId,
+        name: name ?? this.name,
+        topic: topic,
+        position: position ?? this.position,
+        onlyAdmins: onlyAdmins,
+        categoryId: clearCategory ? null : categoryId ?? this.categoryId,
+        unread: unread ?? this.unread,
+        mentions: mentions ?? this.mentions,
+        lastAt: lastAt,
+        lastReadAt: lastReadAt,
+      );
 
   factory SocialChannel.fromJson(Map<String, dynamic> j, String conversationId) => SocialChannel(
         id: '${j['id']}',
@@ -193,6 +231,7 @@ class SocialChannel {
         unread: _int(j['unread']),
         mentions: _int(j['mentions']),
         lastAt: _date(j['last_at']),
+        lastReadAt: _date(j['last_read_at']),
       );
 }
 
@@ -210,6 +249,9 @@ class SocialConversation {
   final String? courseName;
   final Cargo role;
   final bool muted;
+  final NotificarGrupo notify;
+  final bool suppressEveryone;
+  final bool suppressRoles;
   final String? nickname;
   final int memberCount;
   final List<SocialChannel> channels;
@@ -236,6 +278,9 @@ class SocialConversation {
     this.courseName,
     this.role = Cargo.member,
     this.muted = false,
+    this.notify = NotificarGrupo.tudo,
+    this.suppressEveryone = false,
+    this.suppressRoles = false,
     this.nickname,
     this.memberCount = 1,
     this.channels = const [],
@@ -256,20 +301,33 @@ class SocialConversation {
   /// Pode fazer isto neste grupo? Dono e admin podem tudo; os outros, pelo cargo.
   bool pode(Permissao p) => role.gerencia || myPerms.contains(p.id);
 
-  SocialConversation copyWith({String? preview, bool? hasKey, List<SocialChannel>? channels, bool? muted}) => SocialConversation(
+  SocialConversation copyWith({
+    String? preview,
+    bool? hasKey,
+    List<SocialChannel>? channels,
+    List<SocialCategory>? categories,
+    bool? muted,
+    NotificarGrupo? notify,
+    bool? suppressEveryone,
+    bool? suppressRoles,
+  }) =>
+      SocialConversation(
         id: id,
         title: title,
         description: description,
         iconPath: iconPath,
         bannerPath: bannerPath,
         accentColor: accentColor,
-        categories: categories,
+        categories: categories ?? this.categories,
         myRoles: myRoles,
         myPerms: myPerms,
         tipo: tipo,
         courseName: courseName,
         role: role,
-        muted: muted ?? this.muted,
+        muted: notify == null ? (muted ?? this.muted) : notify != NotificarGrupo.tudo,
+        notify: notify ?? this.notify,
+        suppressEveryone: suppressEveryone ?? this.suppressEveryone,
+        suppressRoles: suppressRoles ?? this.suppressRoles,
         nickname: nickname,
         memberCount: memberCount,
         channels: channels ?? this.channels,
@@ -305,6 +363,9 @@ class SocialConversation {
       courseName: _str(j['moodle_course_name']),
       role: Cargo.de(j['role'] as String?),
       muted: j['muted'] == true,
+      notify: NotificarGrupo.de(j['notify'], muted: j['muted'] == true),
+      suppressEveryone: j['suppress_everyone'] == true,
+      suppressRoles: j['suppress_roles'] == true,
       nickname: _str(j['nickname']),
       memberCount: _int(j['member_count']),
       channels: channels,
@@ -413,6 +474,9 @@ class SocialGroupInfo {
         ...conv,
         'role': j['myRole'],
         'muted': j['muted'],
+        'notify': j['notify'],
+        'suppress_everyone': j['suppressEveryone'],
+        'suppress_roles': j['suppressRoles'],
         'channels': j['channels'],
         'categories': j['categories'],
         'my_perms': j['myPerms'],

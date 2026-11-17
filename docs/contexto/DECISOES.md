@@ -59,6 +59,19 @@ valham para os dois sem trabalho dobrado. App separado obrigaria a copiar cada m
 do Linux instala GTK/X11 e o Windows precisa do Visual Studio com C++. "Abrir com o sistema"
 foi feito sem pacote (o `launch_at_startup` não resolve com o SDK atual).
 
+## 2026-11-16 — Notificações por grupo e ordem dos grupos
+**Decisão:** `social_members.notify` (`all`, `mentions`, `none`) com `suppress_everyone` e
+`suppress_roles`; `muted` continua existindo e vale `notify <> 'all'` para o app antigo.
+A ordem dos grupos na barra lateral é só do aparelho (`Cfg.socialOrdemGrupos`); a dos
+canais e categorias é do grupo (ação `arrange_channels`, quem gerencia canais).
+**Por quê:** o "silenciar" sozinho não deixava escolher receber só menções nem ignorar
+@todos; ordem de grupos é preferência pessoal, ordem de canais é do grupo (como no Discord).
+
+## 2026-11-16 — Turma de ingresso
+**Decisão:** `social_profiles.cohort` ("2024/2") é preenchido só pelo servidor, a partir do
+`username` do AVA (`core_webservice_get_site_info`) quando ele começa com ano+semestre.
+**Por quê:** cargo fixo pedido pelo dono, que ninguém consegue mudar pelo app.
+
 ## 2026-11-15 — Social v2: sessão, envelopes, long polling
 **Decisão:** o token do AVA vira uma sessão HMAC de 12 h; chaves das conversas também
 circulam por envelopes X25519 entre aparelhos; mensagens chegam por long polling.
