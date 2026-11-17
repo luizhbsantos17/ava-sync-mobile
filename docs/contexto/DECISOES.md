@@ -154,3 +154,8 @@ O plugin sobe o serviço com todos os `foregroundServiceType` do manifesto. Com
 de autorizar a captura de tela. Efeito: só com voz, o Android pode cortar o microfone com o app
 em segundo plano. Para resolver isso, seria preciso um serviço próprio de microfone, ligado só
 depois de RECORD_AUDIO concedida.
+
+## Widgets do livekit_client que usam Material (2026-11-17)
+O app usa `material_ui`, não o `package:flutter/material.dart`. Widgets prontos de pacotes que
+dependem do Material do Flutter (ex.: `ScreenSelectDialog` do livekit) não acham
+`MaterialLocalizations` e quebram com "Null check operator". Use telas próprias com material_ui.

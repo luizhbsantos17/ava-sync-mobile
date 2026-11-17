@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:livekit_client/livekit_client.dart' show MediaDevice, ScreenSelectDialog, VideoTrack, VideoTrackRenderer, VideoViewFit;
+import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
+import 'package:livekit_client/livekit_client.dart' show MediaDevice, VideoTrack, VideoTrackRenderer, VideoViewFit;
 import 'package:material_ui/material_ui.dart';
 
 import '../../plataforma.dart';
@@ -287,15 +288,10 @@ class _VozTelaState extends State<VozTela> {
   /// Quem está em destaque (vídeo grande). Null = escolhe sozinho (quem compartilha a tela).
   String? _foco;
 
-  // ignore: experimental_member_use
-  Future<String?> _escolherTela() => ScreenSelectDialog.show(
-        context,
-        titleText: 'O que você quer compartilhar?',
-        screenTabText: 'Tela inteira',
-        windowTabText: 'Janela',
-        cancelText: 'Cancelar',
-        shareText: 'Compartilhar',
-      );
+  // Seletor próprio: o do livekit usa o Material do Flutter, e o app usa o material_ui
+  // (sem as traduções que ele procura): quebrava com "Null check operator".
+  Future<String?> _escolherTela() =>
+      showDialog<String>(context: context, builder: (_) => const _EscolherTela());
 
   /// Mostra (uma vez) o erro de câmera ou tela, com a mensagem real para dar para investigar.
   void _avisarFalha() {
@@ -639,6 +635,116 @@ class _Quadro extends StatelessWidget {
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// Escolher a tela inteira ou uma janela para compartilhar (computador).
+class _EscolherTela extends StatefulWidget {
+  const _EscolherTela();
+
+  @override
+  State<_EscolherTela> createState() => _EscolherTelaState();
+}
+
+class _EscolherTelaState extends State<_EscolherTela> {
+  List<rtc.DesktopCapturerSource>? _fontes;
+  String? _erro;
+  bool _janelas = false;
+  String? _escolhida;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_carregar());
+  }
+
+  Future<void> _carregar() async {
+    try {
+      final f = await rtc.desktopCapturer.getSources(
+        types: [rtc.SourceType.Screen, rtc.SourceType.Window],
+        thumbnailSize: rtc.ThumbnailSize(320, 180),
+      );
+      if (!mounted) return;
+      setState(() {
+        _fontes = f;
+        // uma tela só: já vem escolhida
+        final telas = f.where((x) => x.type == rtc.SourceType.Screen).toList();
+        if (telas.length == 1) _escolhida = telas.first.id;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _erro = 'Não foi possível listar as telas: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tipo = _janelas ? rtc.SourceType.Window : rtc.SourceType.Screen;
+    final lista = (_fontes ?? const <rtc.DesktopCapturerSource>[]).where((f) => f.type == tipo).toList();
+    return AlertDialog(
+      title: const Text('O que você quer compartilhar?'),
+      content: SizedBox(
+        width: 620,
+        height: 380,
+        child: Column(children: [
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, icon: Icon(Icons.monitor_rounded), label: Text('Tela inteira')),
+              ButtonSegment(value: true, icon: Icon(Icons.web_asset_rounded), label: Text('Janela')),
+            ],
+            selected: {_janelas},
+            onSelectionChanged: (v) => setState(() => _janelas = v.first),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: _erro != null
+                ? Center(child: Text(_erro!, textAlign: TextAlign.center))
+                : _fontes == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : lista.isEmpty
+                        ? Center(child: Text(_janelas ? 'Nenhuma janela aberta.' : 'Nenhuma tela encontrada.'))
+                        : GridView.builder(
+                            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 200, childAspectRatio: 16 / 12, mainAxisSpacing: 10, crossAxisSpacing: 10),
+                            itemCount: lista.length,
+                            itemBuilder: (_, i) {
+                              final f = lista[i];
+                              final sel = f.id == _escolhida;
+                              final img = f.thumbnail;
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: () => setState(() => _escolhida = f.id),
+                                onDoubleTap: () => Navigator.pop(context, f.id),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: sel ? cs.primary : cs.outlineVariant, width: sel ? 2.5 : 1),
+                                  ),
+                                  child: Column(children: [
+                                    Expanded(
+                                      child: img == null || img.isEmpty
+                                          ? Icon(_janelas ? Icons.web_asset_rounded : Icons.monitor_rounded, size: 40)
+                                          : Image.memory(img, fit: BoxFit.contain, gaplessPlayback: true),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                                  ]),
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: _escolhida == null ? null : () => Navigator.pop(context, _escolhida),
+          child: const Text('Compartilhar'),
+        ),
+      ],
     );
   }
 }
