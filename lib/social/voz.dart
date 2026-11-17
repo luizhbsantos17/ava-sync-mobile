@@ -129,8 +129,6 @@ class VozController extends ChangeNotifier {
       estado = EstadoVoz.conectado;
       desde = DateTime.now();
       _batida = Timer.periodic(const Duration(seconds: 20), (_) => unawaited(_contar()));
-      // Android: segue ouvindo e falando com o app em segundo plano (serviço com notificação)
-      unawaited(_ligarSegundoPlano());
       unawaited(SocialService.instance.refresh());
     } catch (e) {
       erro = e is SocialApiException ? e.message : 'Não foi possível entrar na chamada: $e';
@@ -243,6 +241,7 @@ class VozController extends ChangeNotifier {
     try {
       if (telaLigada) {
         await lp.setScreenShareEnabled(false);
+        await _pararSegundoPlano();
       } else if (Plataforma.desktop) {
         final fonte = await escolher();
         if (fonte == null) return;
@@ -255,11 +254,15 @@ class VozController extends ChangeNotifier {
       }
     } catch (e) {
       erro = 'Não foi possível compartilhar a tela: $e';
+      if (!telaLigada) await _pararSegundoPlano();
     }
     notifyListeners();
     unawaited(_contar());
   }
 
+  /// Android: serviço com notificação do tipo "mediaProjection", obrigatório para capturar a
+  /// tela. Só pode subir DEPOIS de a pessoa autorizar a captura: antes disso o Android 14+
+  /// derruba o app (SecurityException no código nativo, que o Dart não consegue pegar).
   Future<void> _ligarSegundoPlano() async {
     if (!Plataforma.celular || _segundoPlano) return;
     final ok = await FlutterBackground.initialize(

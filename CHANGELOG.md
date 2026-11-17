@@ -20,6 +20,8 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+### Corrigido
+- O app **fechava sozinho ao entrar num canal de voz** no Android.
 
 ## [1.2.0] - 2026-11-16
 ### Adicionado

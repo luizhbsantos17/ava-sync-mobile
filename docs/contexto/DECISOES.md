@@ -146,3 +146,11 @@ O % principal de presença é `1 - faltas / total de aulas do semestre` (carga h
 de 50 min), não o % do Q-Acadêmico (sobre aulas já dadas). Reprovar por falta depende do total,
 então esse é o número útil. O % do Q-Acadêmico fica em `Frequencia.percentualDadas` e só vira o
 principal quando não há carga horária. As aulas do dia mostram "pode faltar mais N dias".
+
+## Serviço do flutter_background só para compartilhar tela (2026-11-16)
+O plugin sobe o serviço com todos os `foregroundServiceType` do manifesto. Com
+`mediaProjection|microphone`, subir o serviço ao entrar na chamada derrubava o app no Android 14+
+(SecurityException nativa). Agora o tipo é só `mediaProjection` e o serviço sobe apenas depois
+de autorizar a captura de tela. Efeito: só com voz, o Android pode cortar o microfone com o app
+em segundo plano. Para resolver isso, seria preciso um serviço próprio de microfone, ligado só
+depois de RECORD_AUDIO concedida.
