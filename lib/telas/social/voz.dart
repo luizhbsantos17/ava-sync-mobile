@@ -302,7 +302,20 @@ class _VozTelaState extends State<VozTela> {
     final f = voz.falhaMidia;
     if (f == null || !mounted) return;
     voz.falhaMidia = null;
-    mostrarAviso(context, f);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Não deu certo'),
+        content: SingleChildScrollView(child: SelectableText(f, style: const TextStyle(fontSize: 12.5))),
+        actions: [
+          TextButton(
+            onPressed: () => Clipboard.setData(ClipboardData(text: f)),
+            child: const Text('Copiar'),
+          ),
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
+        ],
+      ),
+    );
   }
 
   Future<void> _menuPessoa(PessoaNaVoz p, Offset? pos) async {

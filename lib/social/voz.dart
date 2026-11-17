@@ -233,8 +233,8 @@ class VozController extends ChangeNotifier {
     notifyListeners();
     try {
       await lp.setCameraEnabled(!cameraLigada);
-    } catch (e) {
-      falhaMidia = 'Não foi possível usar a câmera: $e';
+    } catch (e, st) {
+      falhaMidia = 'Não foi possível usar a câmera: $e${ondeFalhou(st)}';
     } finally {
       ligandoMidia = false;
     }
@@ -264,14 +264,21 @@ class VozController extends ChangeNotifier {
         await _ligarSegundoPlano();
         await lp.setScreenShareEnabled(true, captureScreenAudio: true);
       }
-    } catch (e) {
-      falhaMidia = 'Não foi possível compartilhar a tela: $e';
+    } catch (e, st) {
+      falhaMidia = 'Não foi possível compartilhar a tela: $e${ondeFalhou(st)}';
       if (!telaLigada) await _pararSegundoPlano();
     } finally {
       ligandoMidia = false;
     }
     notifyListeners();
     unawaited(_contar());
+  }
+
+  /// As primeiras linhas da pilha (pacote e linha onde quebrou), para investigar erros
+  /// que vêm de dentro das bibliotecas de chamada.
+  static String ondeFalhou(StackTrace st) {
+    final linhas = st.toString().split('\n').where((l) => l.contains('package:')).take(6).toList();
+    return linhas.isEmpty ? '' : '\n\n${linhas.join('\n')}';
   }
 
   /// Android: serviço com notificação do tipo "mediaProjection", obrigatório para capturar a

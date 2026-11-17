@@ -21,6 +21,11 @@ essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
 
+## [1.2.2] - 2026-11-17
+### Alterado
+- Quando a câmera ou o compartilhamento de tela falham na chamada, aparece uma janela com o
+  erro completo e um botão **Copiar**, para mandar a quem cuida do app.
+
 ## [1.2.1] - 2026-11-16
 ### Adicionado
 - Computador: **recolher o menu principal** (Prazos, Matérias...) para ficar só com os ícones,
