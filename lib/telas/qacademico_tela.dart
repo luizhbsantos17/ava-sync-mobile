@@ -83,12 +83,15 @@ class ColetorQA {
   static String get urlLogin => Cfg.qaUrl.isEmpty ? QAcademico.urlPadrao : Cfg.qaUrl;
 
   /// Espera a pagina terminar (e o que ela redireciona em seguida).
-  Future<String> _esperar(Future<void> Function() acao, {Duration limite = const Duration(seconds: 40)}) async {
+  /// [estabilizar]: espera também os redirecionamentos (até ~6 s); páginas que não
+  /// redirecionam (questionários) podem pular isso.
+  Future<String> _esperar(Future<void> Function() acao,
+      {Duration limite = const Duration(seconds: 40), bool estabilizar = true}) async {
     _carregou = Completer<String>();
     await acao();
     var url = await _carregou!.future.timeout(limite, onTimeout: () => throw Exception('O Q-Acadêmico demorou demais para responder.'));
     // redirecionamentos e paginas que se recarregam: espera estabilizar
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < (estabilizar ? 4 : 0); i++) {
       _carregou = Completer<String>();
       try {
         url = await _carregou!.future.timeout(const Duration(milliseconds: 1500));
@@ -232,7 +235,7 @@ class ColetorQA {
       for (final r in respostas) {
         progresso?.call(feitos, respostas.length);
         final q = r.questionario;
-        await abrir(q.url);
+        await _esperar(() => web.carregar(q.url), estabilizar: false);
         final est = await _estado();
         if (est != 'pagina') {
           throw Exception(est == 'login'
@@ -271,7 +274,7 @@ class ColetorQA {
               return 'ok';
             })()''');
             if (res != 'ok') falha = res;
-          }, limite: const Duration(seconds: 30));
+          }, limite: const Duration(seconds: 30), estabilizar: false);
         } on TimeoutException {
           falha = 'sem-resposta';
         } catch (e) {
