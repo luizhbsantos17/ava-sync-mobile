@@ -21,6 +21,12 @@ essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
 
+## [1.3.1] - 2026-11-19
+### Alterado
+- Avaliação docente: **nota padrão e comentário padrão** no topo e um botão "Responder todas".
+  Ajustar a nota ou o comentário de uma disciplina ficou opcional, e o app lembra o padrão
+  para o próximo semestre. As respostas são enviadas mais rápido, uma atrás da outra.
+
 ## [1.3.0] - 2026-11-19
 ### Adicionado
 - **Avaliação docente pelo app**: quando o Q-Acadêmico bloqueia notas e faltas até você

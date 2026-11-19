@@ -191,6 +191,11 @@ class Cfg {
   /// Atualiza o Q-Academico junto com a sincronizacao do AVA (com o app aberto).
   static bool get qaAuto => _p.getBool('qa_auto') ?? true;
   static Future<void> setQaAuto(bool v) => _p.setBool('qa_auto', v);
+  /// Avaliação docente: nota e comentário padrão (lembrados para o próximo semestre).
+  static int? get qaNotaPadrao => _p.getInt('qa_nota_padrao');
+  static Future<void> setQaNotaPadrao(int v) => _p.setInt('qa_nota_padrao', v);
+  static String get qaComentarioPadrao => _p.getString('qa_comentario_padrao') ?? '';
+  static Future<void> setQaComentarioPadrao(String v) => _p.setString('qa_comentario_padrao', v);
   /// Faltar um dia de aula conta quantas faltas (quando o horario nao diz).
   static int get faltasPorDia => _p.getInt('faltas_dia') ?? 2;
   static Future<void> setFaltasPorDia(int v) => _p.setInt('faltas_dia', v);
