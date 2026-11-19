@@ -159,3 +159,9 @@ depois de RECORD_AUDIO concedida.
 O app usa `material_ui`, não o `package:flutter/material.dart`. Widgets prontos de pacotes que
 dependem do Material do Flutter (ex.: `ScreenSelectDialog` do livekit) não acham
 `MaterialLocalizations` e quebram com "Null check operator". Use telas próprias com material_ui.
+
+## Avaliação docente respondida pelo app (2026-11-19)
+O dono pediu para o app responder sozinho os questionários obrigatórios que bloqueiam o
+Q-Acadêmico. Decisão: o app nunca escolhe as respostas; a pessoa define a nota (0 a 10) de cada
+disciplina e confirma. O app marca a opção com aquela nota em todas as perguntas e envia pelo
+próprio formulário, no WebView logado (sem HTTP direto). Só os questionários obrigatórios.

@@ -21,6 +21,14 @@ essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
 
+## [1.3.0] - 2026-11-19
+### Adicionado
+- **Avaliação docente pelo app**: quando o Q-Acadêmico bloqueia notas e faltas até você
+  responder os questionários do fim do semestre, o app avisa e abre uma tela com as
+  disciplinas. Você escolhe a nota de cada professor (de 0 a 10, ou a mesma para todos) e um
+  comentário se quiser; o app responde e envia todos os questionários sozinho e volta a ler
+  notas e faltas.
+
 ## [1.2.3] - 2026-11-17
 ### Corrigido
 - **Compartilhar a tela no computador** não funcionava (erro "Null check operator"). Agora

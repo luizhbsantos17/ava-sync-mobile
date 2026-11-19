@@ -16,6 +16,8 @@ class QAcademico {
   static const paginaBoletim = 'index.asp?t=2032';
   static const paginaDiarios = 'index.asp?t=2071';
   static const paginaHorario = 'index.asp?t=2010';
+  /// Seleção de questionários (avaliação docente).
+  static const paginaQuestionarios = 'index.asp?t=1020';
 
   static Future<Map<String, dynamic>> carregar() => Store.lerJson('academico.json');
   static Future<void> salvar(Map<String, dynamic> d) => Store.gravarJson('academico.json', d);
@@ -764,6 +766,158 @@ List<String> mudancasAcademico(List<Disciplina> antes, List<Disciplina> agora) {
       out.add('Falta registrada: ${d.nome} (${fd.toStringAsFixed(0)} no total'
           '${r == null ? '' : r >= 0 ? ', ainda pode ter $r' : ', passou do limite'})');
     }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- questionários obrigatórios
+
+/// Um questionário pendente (avaliação docente). No fim do semestre o Q-Acadêmico
+/// bloqueia o resto do sistema até a pessoa responder os obrigatórios.
+class QuestionarioQA {
+  final String titulo;
+  final String url;
+  final String disciplina;
+  final String professor;
+  final bool obrigatorio;
+  const QuestionarioQA({required this.titulo, required this.url, this.disciplina = '', this.professor = '', this.obrigatorio = true});
+}
+
+/// A página é a de "responda os questionários antes de continuar"?
+bool ehBloqueioQuestionarios(String pagina) {
+  final t = norm(pagina);
+  return t.contains('questionario obrigatorio') ||
+      (pagina.contains('t=1022') && pagina.contains('codAplicacaoQuestionario') && t.contains('selecione o questionario'));
+}
+
+/// Lista de questionários (página "Seleção de questionário"). [base] resolve links relativos.
+List<QuestionarioQA> lerQuestionariosPendentes(String pagina, {String base = 'https://academico.ifes.edu.br/qacademico/'}) {
+  final doc = html.parse(pagina);
+  final out = <QuestionarioQA>[];
+  var obrigatorio = true;
+  // percorre as linhas na ordem: os rótulos "Obrigatórios:" / "Não Obrigatórios:" dividem a lista
+  for (final tr in doc.querySelectorAll('tr')) {
+    if (tr.querySelector('tr') != null) continue; // linha de layout
+    final texto = norm(tr.text);
+    if (texto.startsWith('nao obrigatorio')) {
+      obrigatorio = false;
+      continue;
+    }
+    if (texto.startsWith('obrigatorio')) {
+      obrigatorio = true;
+      continue;
+    }
+    for (final a in tr.querySelectorAll('a[href]')) {
+      final href = a.attributes['href'] ?? '';
+      if (!href.contains('t=1022') || !href.toLowerCase().contains('codaplicacaoquestionario')) continue;
+      final titulo = limpar(a.text);
+      final url = href.startsWith('http') ? href : Uri.parse(base).resolve(href.replaceFirst(RegExp(r'^/qacademico/'), '')).toString();
+      // "Avaliação Docente - 2026/2 - campus X - Disciplina - Professor - 123"
+      final partes = titulo.split(' - ').map((s) => s.trim()).toList();
+      var disciplina = '', professor = '';
+      if (partes.length >= 6) {
+        disciplina = partes[partes.length - 3];
+        professor = partes[partes.length - 2];
+      } else if (partes.length >= 2) {
+        disciplina = partes.last;
+      }
+      out.add(QuestionarioQA(titulo: titulo, url: url, disciplina: disciplina, professor: professor, obrigatorio: obrigatorio));
+    }
+  }
+  return out;
+}
+
+/// Uma pergunta do formulário: de múltipla escolha (opções com valor e pontos) ou de texto.
+class PerguntaQA {
+  final String campo; // name do input (P_1234)
+  final String texto;
+  final List<(String valor, int? pontos)> opcoes;
+  bool get deTexto => opcoes.isEmpty;
+  const PerguntaQA(this.campo, this.texto, this.opcoes);
+}
+
+const _pontosPorExtenso = {
+  'zero': 0, 'um': 1, 'uma': 1, 'dois': 2, 'duas': 2, 'tres': 3, 'quatro': 4, 'cinco': 5,
+  'seis': 6, 'sete': 7, 'oito': 8, 'nove': 9, 'dez': 10,
+};
+
+/// "dez pontos" -> 10, "zero ponto" -> 0, "7" -> 7. Outro texto: null.
+int? pontosDoRotulo(String rotulo) {
+  final t = norm(rotulo);
+  final n = RegExp(r'^(\d{1,2})\b').firstMatch(t);
+  if (n != null) return int.parse(n.group(1)!);
+  final p = RegExp(r'^([a-z]+)').firstMatch(t);
+  if (p == null) return null;
+  final w = p.group(1)!;
+  // página salva com acento estragado ("tr?s"): o começo da palavra basta
+  return _pontosPorExtenso[w] ?? (w == 'tr' ? 3 : null);
+}
+
+/// O que enviar num questionário: nota de 0 a 10 para as perguntas de escolha e um
+/// comentário opcional para a pergunta de texto.
+class RespostaQuestionario {
+  final QuestionarioQA questionario;
+  final int pontos;
+  final String comentario;
+  const RespostaQuestionario(this.questionario, this.pontos, {this.comentario = ''});
+}
+
+/// Perguntas do formulário de um questionário (form "frmquestionario").
+List<PerguntaQA> lerFormularioQuestionario(String pagina) {
+  final doc = html.parse(pagina);
+  final form = doc.querySelector('form#frmquestionario') ?? doc.querySelector('form[name=frmquestionario]');
+  if (form == null) return const [];
+  final out = <PerguntaQA>[];
+  final vistos = <String>{};
+  final textos = form.querySelectorAll('.textoPergunta').map((e) => limpar(e.text)).toList();
+  var i = 0;
+  for (final input in form.querySelectorAll('input')) {
+    final nome = input.attributes['name'] ?? '';
+    final tipo = (input.attributes['type'] ?? 'text').toLowerCase();
+    if (!RegExp(r'^P_\d+$').hasMatch(nome) || vistos.contains(nome)) continue;
+    if (tipo != 'radio' && tipo != 'text' && tipo != 'textarea') continue;
+    vistos.add(nome);
+    final texto = i < textos.length ? textos[i] : nome;
+    i++;
+    if (tipo == 'radio') {
+      final opcoes = <(String, int?)>[];
+      for (final r in form.querySelectorAll('input[name="$nome"]')) {
+        // o rótulo é o texto logo depois do botão ("dez pontos")
+        opcoes.add((r.attributes['value'] ?? '', pontosDoRotulo(_textoDepois(r))));
+      }
+      out.add(PerguntaQA(nome, texto, opcoes));
+    } else {
+      out.add(PerguntaQA(nome, texto, const []));
+    }
+  }
+  for (final t in form.querySelectorAll('textarea')) {
+    final nome = t.attributes['name'] ?? '';
+    if (RegExp(r'^P_\d+$').hasMatch(nome) && vistos.add(nome)) out.add(PerguntaQA(nome, i < textos.length ? textos[i++] : nome, const []));
+  }
+  return out;
+}
+
+/// Texto logo depois de um elemento, até o próximo input ou quebra de linha.
+String _textoDepois(dom.Element e) {
+  final irmaos = e.parentNode?.nodes ?? <dom.Node>[];
+  final buf = StringBuffer();
+  for (var i = irmaos.indexOf(e) + 1; i < irmaos.length; i++) {
+    final n = irmaos[i];
+    if (n is dom.Element && (n.localName == 'input' || n.localName == 'br')) break;
+    buf.write(n.text ?? '');
+  }
+  return limpar(buf.toString());
+}
+
+/// Para cada pergunta de múltipla escolha, o valor da opção com [pontos] (ou a mais perto).
+/// Perguntas sem pontos reconhecíveis ficam de fora (o envio confere e avisa).
+Map<String, String> escolherRespostas(List<PerguntaQA> perguntas, int pontos) {
+  final out = <String, String>{};
+  for (final p in perguntas.where((p) => !p.deTexto)) {
+    final comPontos = p.opcoes.where((o) => o.$2 != null).toList();
+    if (comPontos.isEmpty) continue;
+    comPontos.sort((a, b) => (a.$2! - pontos).abs().compareTo((b.$2! - pontos).abs()));
+    out[p.campo] = comPontos.first.$1;
   }
   return out;
 }

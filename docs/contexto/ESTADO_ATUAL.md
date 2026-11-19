@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-17 (1.2.3: seletor próprio de tela para compartilhar)
+Última atualização: 2026-11-19 (1.3.0: avaliação docente obrigatória respondida pelo app)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -43,6 +43,10 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   `LIVEKIT_API_SECRET` nos segredos da Edge Function. Sem isso, entrar mostra "ainda não foram ligados".
 
 ## Problemas conhecidos / não verificado
+- Avaliação docente (1.3.0): `lerQuestionariosPendentes`/`lerFormularioQuestionario` testados com
+  fixtures fictícias e conferidos contra páginas reais; o envio pelo WebView (marcar opções e
+  `validateAndSubmit`) **não foi testado** no site. Se a validação exigir o comentário, o envio
+  para e pede para responder pelo site.
 - Voz no computador funciona (testado pelo dono). Compartilhar tela no Windows: o seletor do livekit (ScreenSelectDialog) quebra porque usa o
   Material do Flutter e o app usa material_ui. Trocado por um seletor próprio (1.2.3), não testado. Ligar a câmera congela a tela por
   alguns segundos (abertura do dispositivo no código nativo do flutter_webrtc).
