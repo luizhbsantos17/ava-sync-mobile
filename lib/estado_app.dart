@@ -33,6 +33,18 @@ class AppEstado extends ChangeNotifier {
   /// Preenchido pela tela inicial (WebView oculto). Devolve null se deu certo, ou a mensagem.
   Future<String?> Function()? atualizarAcademico;
 
+  /// Avaliação docente que o Q-Acadêmico exige antes de liberar notas e faltas.
+  List<QuestionarioQA> questionariosQA = [];
+
+  /// Responde os questionários pelo navegador escondido (posto pelo ColetorOculto).
+  Future<int> Function(List<RespostaQuestionario>, void Function(int, int))? responderQuestionariosQA;
+
+  /// Lê só o Q-Acadêmico de novo (depois de responder os questionários, por exemplo).
+  Future<void> atualizarSoAcademico() async {
+    await _sincronizarAcademico(forcar: true);
+    notifyListeners();
+  }
+
   /// Computador: pergunta onde salvar os arquivos antes da primeira sincronização.
   Future<void> Function()? escolherPastaInicial;
 
@@ -146,9 +158,9 @@ class AppEstado extends ChangeNotifier {
   }
 
   /// Q-Academico junto com o AVA: so com o app aberto e se a pessoa ja configurou.
-  Future<void> _sincronizarAcademico() async {
+  Future<void> _sincronizarAcademico({bool forcar = false}) async {
     final f = atualizarAcademico;
-    if (f == null || !Cfg.qaAuto || Cfg.qaLogin.isEmpty) return;
+    if (f == null || (!forcar && !Cfg.qaAuto) || Cfg.qaLogin.isEmpty) return;
     progresso = 'Lendo Q-Acadêmico...';
     notifyListeners();
     try {

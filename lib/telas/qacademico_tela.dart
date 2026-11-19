@@ -7,9 +7,11 @@ import '../navegador_web.dart';
 import '../config.dart';
 import '../estado_app.dart';
 import '../qacademico.dart';
+import 'questionarios.dart';
 
 /// Situacao de uma coleta no Q-Academico.
-enum SituacaoQA { ok, precisaLogin, verificacao, falhou }
+/// [questionarios]: o Q-Acadêmico bloqueou o sistema até responder a avaliação docente.
+enum SituacaoQA { ok, precisaLogin, verificacao, falhou, questionarios }
 
 class ResultadoQA {
   final SituacaoQA situacao;
@@ -17,7 +19,9 @@ class ResultadoQA {
   final int disciplinas;
   /// Boletim lido, mas diario e/ou horario nao: os dados estao incompletos.
   final bool parcial;
-  const ResultadoQA(this.situacao, this.mensagem, {this.disciplinas = 0, this.parcial = false});
+  /// Questionários obrigatórios pendentes (situação [SituacaoQA.questionarios]).
+  final List<QuestionarioQA> questionarios;
+  const ResultadoQA(this.situacao, this.mensagem, {this.disciplinas = 0, this.parcial = false, this.questionarios = const []});
 }
 
 /// Mensagem final da importacao (dizendo o que nao foi lido, sem aparentar sucesso completo).
@@ -164,9 +168,26 @@ class ColetorQA {
         if (est == 'login') return const ResultadoQA(SituacaoQA.precisaLogin, 'Matrícula ou senha do Q-Acadêmico não aceitas.');
         await abrir('$_base${QAcademico.paginaBoletim}');
       }
+      // fim de semestre: o Q-Acadêmico pode exigir a avaliação docente antes de liberar o resto
+      var boletim = await html();
+      if (!ehBloqueioQuestionarios(boletim) && lerBoletim(boletim).isEmpty) {
+        try {
+          await abrir('$_base${QAcademico.paginaQuestionarios}');
+          final h = await html();
+          if (ehBloqueioQuestionarios(h)) boletim = h;
+        } catch (_) {}
+      }
+      if (ehBloqueioQuestionarios(boletim)) {
+        final qs = lerQuestionariosPendentes(boletim, base: _base).where((q) => q.obrigatorio).toList();
+        if (qs.isNotEmpty) {
+          return ResultadoQA(SituacaoQA.questionarios,
+              'O Q-Acadêmico está pedindo a avaliação de ${qs.length} disciplina(s) antes de liberar notas e faltas.',
+              questionarios: qs);
+        }
+      }
       // o boletim do t=2032 e o formato conhecido; o menu so ajuda a achar diarios e horario
       final links = await _linksDoMenu();
-      final boletim = await html();
+      boletim = await html();
       await QAcademico.guardarPagina('boletim', boletim);
       final disc = lerBoletim(boletim);
       if (disc.isEmpty) {
@@ -195,6 +216,80 @@ class ColetorQA {
       return resultadoImportacao(n, diarios, horario.length);
     } catch (e) {
       return ResultadoQA(SituacaoQA.falhou, 'Falha ao ler o Q-Acadêmico: ${'$e'.replaceFirst('Exception: ', '')}');
+    } finally {
+      _ocupado = false;
+    }
+  }
+
+  /// Responde os questionários obrigatórios com as notas que a pessoa escolheu na tela
+  /// do app: abre cada um, marca as opções e clica em "Enviar respostas", como ela faria.
+  /// Devolve quantos foram enviados; para no primeiro que der errado (com a mensagem).
+  Future<int> responderQuestionarios(List<RespostaQuestionario> respostas, {void Function(int feitos, int total)? progresso}) async {
+    if (_ocupado) throw Exception('Já está lendo o Q-Acadêmico. Tente de novo em instantes.');
+    _ocupado = true;
+    var feitos = 0;
+    try {
+      for (final r in respostas) {
+        progresso?.call(feitos, respostas.length);
+        final q = r.questionario;
+        await abrir(q.url);
+        final est = await _estado();
+        if (est != 'pagina') {
+          throw Exception(est == 'login'
+              ? 'A sessão do Q-Acadêmico caiu. Entre de novo e tente outra vez.'
+              : 'O Q-Acadêmico pediu uma verificação. Abra a tela do Q-Acadêmico e conclua.');
+        }
+        final perguntas = lerFormularioQuestionario(await html());
+        if (perguntas.isEmpty) throw Exception('Não reconheci o formulário de ${q.disciplina}. Responda esse pelo site.');
+        final escolhas = escolherRespostas(perguntas, r.pontos);
+        final semResposta = perguntas.where((p) => !p.deTexto && !escolhas.containsKey(p.campo)).length;
+        if (semResposta > 0) {
+          throw Exception('${q.disciplina}: $semResposta pergunta(s) com opções diferentes de "pontos". Responda esse pelo site.');
+        }
+        final textos = {
+          for (final p in perguntas.where((p) => p.deTexto)) p.campo: '',
+        };
+        if (textos.isNotEmpty && r.comentario.trim().isNotEmpty) textos[textos.keys.first] = r.comentario.trim();
+        final esc = jsonEncode(escolhas), txt = jsonEncode(textos);
+        String? falha;
+        try {
+          await _esperar(() async {
+            final res = await _js('''(function(){
+              window.alert = function(){}; window.confirm = function(){ return true; };
+              window.onbeforeunload = null; if (document.body) document.body.onbeforeunload = null;
+              var f = document.getElementById('frmquestionario') || document.forms['frmquestionario'];
+              if (!f) return 'sem-form';
+              var esc = $esc, txt = $txt;
+              for (var n in esc) {
+                var r = f.querySelector('input[name="' + n + '"][value="' + esc[n] + '"]');
+                if (!r) return 'faltou:' + n;
+                if (!r.disabled) r.click();
+              }
+              for (var n in txt) { var t = f.elements[n]; if (t) t.value = txt[n]; }
+              if (typeof validateAndSubmit === 'function') { validateAndSubmit(f); }
+              else { var b = document.getElementById('Enviar'); if (b) b.click(); else f.submit(); }
+              return 'ok';
+            })()''');
+            if (res != 'ok') falha = res;
+          }, limite: const Duration(seconds: 30));
+        } on TimeoutException {
+          falha = 'sem-resposta';
+        } catch (e) {
+          if ('$e'.contains('demorou')) falha = 'sem-resposta';
+          if (falha == null) rethrow;
+        }
+        if (falha != null) {
+          throw Exception('O Q-Acadêmico não aceitou as respostas de ${q.disciplina} ($falha). Responda esse pelo site.');
+        }
+        // continua no mesmo formulário: não foi aceito
+        final depois = await html();
+        if (lerFormularioQuestionario(depois).isNotEmpty && depois.contains(q.url.split('codAvaliado=').last.split('&').first)) {
+          throw Exception('O Q-Acadêmico não aceitou as respostas de ${q.disciplina}. Responda esse pelo site.');
+        }
+        feitos++;
+      }
+      progresso?.call(feitos, respostas.length);
+      return feitos;
     } finally {
       _ocupado = false;
     }
@@ -238,13 +333,20 @@ class _ColetorOcultoState extends State<ColetorOculto> {
       final c = _c ??= ColetorQA();
       if (mounted) setState(() {});
       final r = await c.coletar();
+      app.questionariosQA = r.situacao == SituacaoQA.questionarios ? r.questionarios : [];
       return r.situacao == SituacaoQA.ok && !r.parcial ? null : r.mensagem;
+    };
+    app.responderQuestionariosQA = (respostas, progresso) {
+      final c = _c ??= ColetorQA();
+      if (mounted) setState(() {});
+      return c.responderQuestionarios(respostas, progresso: progresso);
     };
   }
 
   @override
   void dispose() {
     app.atualizarAcademico = null;
+    app.responderQuestionariosQA = null;
     _c?.web.descartar();
     super.dispose();
   }
@@ -336,6 +438,23 @@ class _QAcademicoTelaState extends State<_QAcademicoNavegador> {
     }
     await guardarCredenciaisQA(r, login: login, senha: senha, lembrar: _lembrar);
     if (!mounted) return;
+    if (r.situacao == SituacaoQA.questionarios) {
+      // guarda o login: a pessoa entrou certo, só falta a avaliação
+      if (login.isNotEmpty) await Cfg.setQaLogin(login);
+      if (_lembrar && senha.isNotEmpty) await Cfg.setQaSenha(senha);
+      if (!mounted) return;
+      setState(() {
+        _ocupado = false;
+        _msg = r.mensagem;
+      });
+      final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(
+          builder: (_) => QuestionariosTela(
+                questionarios: r.questionarios,
+                responder: (rs, p) => _c.responderQuestionarios(rs, progresso: p),
+              )));
+      if (ok == true && mounted) await _importar(); // liberado: importa de novo
+      return;
+    }
     setState(() {
       _ocupado = false;
       _msg = r.mensagem;

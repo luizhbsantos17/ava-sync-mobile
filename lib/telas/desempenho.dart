@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../classificar.dart';
 import '../estado_app.dart';
 import '../qacademico.dart';
+import 'questionarios.dart';
 import '../util.dart';
 import 'aulas.dart';
 import 'qacademico_tela.dart';
@@ -81,7 +82,12 @@ class DesempenhoAba extends StatelessWidget {
               dense: true,
               leading: const Icon(Icons.info_outline),
               title: Text(app.academicoAviso!),
-              onTap: () => abrirQAcademico(context),
+              trailing: app.questionariosQA.isNotEmpty && app.responderQuestionariosQA != null
+                  ? const Text('Responder', style: TextStyle(fontWeight: FontWeight.w700))
+                  : null,
+              onTap: () => app.questionariosQA.isNotEmpty && app.responderQuestionariosQA != null
+                  ? _responderQuestionarios(context)
+                  : abrirQAcademico(context),
             ),
           ),
         Expanded(
@@ -663,5 +669,17 @@ class _Semana extends StatelessWidget {
           ),
       ]),
     );
+  }
+}
+
+/// Abre a avaliação docente pendente e, se enviada, lê o Q-Acadêmico de novo.
+Future<void> _responderQuestionarios(BuildContext context) async {
+  final responder = app.responderQuestionariosQA;
+  if (responder == null) return;
+  final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => QuestionariosTela(questionarios: app.questionariosQA, responder: responder)));
+  if (ok == true) {
+    app.questionariosQA = [];
+    await app.atualizarSoAcademico();
   }
 }
