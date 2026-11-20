@@ -1,0 +1,37 @@
+# Maintainer: luizhbsantos17 <https://github.com/luizhbsantos17>
+#
+# Pacote do AUR (instala com `yay -S ava-sync-bin`). Não edite à mão no AUR: o
+# workflow desktop.yml atualiza pkgver e o sha256 do .tar.gz a cada versão oficial e
+# publica este arquivo lá. pkgver = versão do pubspec + número do build do CI.
+pkgname=ava-sync-bin
+pkgver=1.3.1.0
+pkgrel=1
+pkgdesc="Sincroniza o AVA (Moodle) do Ifes: prazos, atividades, avisos, materiais, notas e Social"
+arch=('x86_64')
+url="https://github.com/luizhbsantos17/ava-sync-mobile"
+license=('MIT')
+depends=('gtk3' 'libsecret' 'libayatana-appindicator')
+provides=('ava-sync')
+conflicts=('ava-sync')
+options=('!strip' '!debug')
+# a release "latest" é sempre a versão oficial mais nova; o nome local leva a versão
+# para o cache do yay não reaproveitar um arquivo antigo
+source=("ava-sync-${pkgver}.tar.gz::${url}/releases/download/latest/AVA-Sync-Linux.tar.gz"
+        "ava-sync.desktop")
+noextract=("ava-sync-${pkgver}.tar.gz")
+sha256sums=('SKIP'
+            'edb9c971d1c109177937ffb4be90f987fa1bcb880bdc7dcdbebffd24f0e8ae2b')
+
+package() {
+  install -d "${pkgdir}/opt/ava-sync"
+  bsdtar -xf "${srcdir}/ava-sync-${pkgver}.tar.gz" -C "${pkgdir}/opt/ava-sync" --no-same-owner
+  chmod -R u=rwX,go=rX "${pkgdir}/opt/ava-sync"
+  chmod 755 "${pkgdir}/opt/ava-sync/ava_sync_mobile"
+
+  install -d "${pkgdir}/usr/bin"
+  ln -s /opt/ava-sync/ava_sync_mobile "${pkgdir}/usr/bin/ava-sync"
+
+  install -Dm644 "${srcdir}/ava-sync.desktop" "${pkgdir}/usr/share/applications/ava-sync.desktop"
+  install -Dm644 "${pkgdir}/opt/ava-sync/data/ava-sync.png" "${pkgdir}/usr/share/pixmaps/ava-sync.png"
+  install -Dm644 "${pkgdir}/opt/ava-sync/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

@@ -23,7 +23,18 @@ class Plataforma {
       : Platform.isLinux
       ? 'Linux'
       : 'Android';
+
+  /// Instalado pelo pacote do AUR (Arch Linux, `yay`): o pacman cuida da atualização,
+  /// então o app não deve mandar baixar o `.tar.gz`.
+  static bool get pacoteAur => instaladoPeloAur(nome, Platform.resolvedExecutable);
+
+  /// Comando que atualiza o pacote do AUR.
+  static const comandoAur = 'yay -Syu ava-sync-bin';
 }
+
+/// O pacote do AUR instala o app em `/opt/ava-sync/` (veja `packaging/aur/PKGBUILD`).
+bool instaladoPeloAur(String sistema, String executavel) =>
+    sistema == 'Linux' && executavel.startsWith('/opt/ava-sync/');
 
 /// Abre um arquivo com o programa padrão do sistema. Devolve o erro, ou null se abriu.
 Future<String?> abrirNoSistema(String caminho, {String? tipo}) async {

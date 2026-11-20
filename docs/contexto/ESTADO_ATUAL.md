@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-19 (1.3.1: avaliação docente com nota e comentário padrão)
+Última atualização: 2026-11-20 (pacote do AUR para instalar o app de Linux com `yay`)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -42,7 +42,15 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   criar o projeto no LiveKit Cloud e pôr `LIVEKIT_URL`, `LIVEKIT_API_KEY` e
   `LIVEKIT_API_SECRET` nos segredos da Edge Function. Sem isso, entrar mostra "ainda não foram ligados".
 
+- **Pacote do AUR (`ava-sync-bin`)**, branch `ccr-1ff5eb26-egpa19`: PKGBUILD em `packaging/aur/`,
+  job `aur` no `desktop.yml` (só versão oficial). **Falta o dono** criar a conta no AUR, cadastrar
+  a chave SSH e pôr a chave privada no secret `AUR_SSH_PRIVATE_KEY` (passo a passo em
+  `packaging/aur/README.md`). Sem o secret, o job só monta e confere o pacote.
+
 ## Problemas conhecidos / não verificado
+- Pacote do AUR: `package()` simulado com um .tar.gz falso; o `makepkg` de verdade no Arch e a
+  publicação só rodam no CI depois do merge. App instalado em `/opt/ava-sync` nunca foi aberto
+  num Arch real (bandeja depende de `libayatana-appindicator`).
 - Avaliação docente (1.3.0): `lerQuestionariosPendentes`/`lerFormularioQuestionario` testados com
   fixtures fictícias e conferidos contra páginas reais; o envio pelo WebView (marcar opções e
   `validateAndSubmit`) **não foi testado** no site. Se a validação exigir o comentário, o envio

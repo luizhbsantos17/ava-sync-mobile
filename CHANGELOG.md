@@ -20,6 +20,11 @@ Mudanças que ainda não têm versão ficam em `## [Não lançado]`; o APK beta 
 essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
+### Adicionado
+- Arch Linux: o app de computador pode ser instalado e atualizado pelo terminal com
+  `yay -S ava-sync-bin` (pacote no AUR, com ícone no menu de aplicativos).
+- Quem instalou pelo AUR, ao ver "Nova versão disponível", recebe o comando
+  `yay -Syu ava-sync-bin` copiado, em vez de baixar o arquivo pelo navegador.
 
 ## [1.3.1] - 2026-11-19
 ### Alterado

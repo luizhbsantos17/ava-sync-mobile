@@ -99,3 +99,5 @@ jobs:
     with:
       canal: production
       tag: latest
+    # AUR_SSH_PRIVATE_KEY para publicar o pacote do Arch Linux
+    secrets: inherit

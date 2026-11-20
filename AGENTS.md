@@ -125,6 +125,7 @@ O mesmo código gera o app Android e os apps de computador. Ao mexer:
 | `scripts/notas_versao.sh` | extrai as notas de uma versão do CHANGELOG |
 | `lib/plataforma.dart`, `lib/navegador_web.dart`, `lib/desktop/` | o que muda no computador (bandeja, segundo plano, navegador embutido) |
 | `windows/`, `linux/`, `macos/` | apps de computador; `windows/instalador.iss` é o instalador |
+| `packaging/aur/` | pacote `ava-sync-bin` do AUR (Arch Linux); o workflow `desktop.yml` publica |
 
 ## Comandos
 

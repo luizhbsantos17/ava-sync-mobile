@@ -165,3 +165,12 @@ O dono pediu para o app responder sozinho os questionários obrigatórios que bl
 Q-Acadêmico. Decisão: o app nunca escolhe as respostas; a pessoa define a nota (0 a 10) de cada
 disciplina e confirma. O app marca a opção com aquela nota em todas as perguntas e envia pelo
 próprio formulário, no WebView logado (sem HTTP direto). Só os questionários obrigatórios.
+
+## Pacote do AUR para o Linux (2026-11-20)
+O dono pediu para instalar o app de Linux pelo terminal com `yay`. Decisão: pacote binário
+`ava-sync-bin` no AUR, que baixa o `AVA-Sync-Linux.tar.gz` da release `latest` (o mesmo do
+app) e instala em `/opt/ava-sync`, com `/usr/bin/ava-sync`, atalho no menu e ícone. Como a
+release `latest` é sobrescrita a cada push na `main`, `pkgver` = versão do pubspec + número do
+build (ex.: `1.3.1.250`) e o CI grava o sha256 do arquivo que acabou de publicar. Só o canal
+oficial vai para o AUR. O app detecta a instalação em `/opt/ava-sync/` e manda atualizar com
+`yay`, porque não tem permissão de escrever lá.

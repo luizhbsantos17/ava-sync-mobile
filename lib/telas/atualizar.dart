@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -36,6 +37,8 @@ Future<void> oferecerAtualizacao(BuildContext context, AtualizacaoInfo info, {bo
           ],
           const SizedBox(height: 14),
           Text(switch (Plataforma.nome) {
+            'Linux' when Plataforma.pacoteAur => 'Você instalou pelo AUR: atualize no terminal com '
+                '"${Plataforma.comandoAur}". Vou copiar o comando para você. Seus dados e o login continuam.',
             'Windows' => 'O app baixa a atualização, instala e abre de novo sozinho. Seus dados e o login continuam.',
             'Linux' || 'macOS' => 'Vou abrir a página da versão nova para você baixar. Seus dados e o login continuam.',
             _ => 'O app baixa a atualização e o Android pede para confirmar a instalação. '
@@ -62,6 +65,16 @@ Future<void> oferecerAtualizacao(BuildContext context, AtualizacaoInfo info, {bo
 }
 
 Future<void> baixarEInstalar(BuildContext context, AtualizacaoInfo info) async {
+  if (Plataforma.pacoteAur) {
+    // o pacman instalou em /opt: quem atualiza é o yay, não o app
+    await Clipboard.setData(const ClipboardData(text: Plataforma.comandoAur));
+    if (context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+        content: Text('Comando copiado: cole no terminal (${Plataforma.comandoAur}).'),
+      ));
+    }
+    return;
+  }
   if (Plataforma.desktop && !Platform.isWindows) {
     // Linux e macOS: sem instalador automático por enquanto, baixa pelo navegador
     await launchUrl(Uri.parse(info.apkUrl), mode: LaunchMode.externalApplication);

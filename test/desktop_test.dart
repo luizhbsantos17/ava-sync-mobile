@@ -8,6 +8,7 @@ import 'package:ava_sync_mobile/config.dart';
 import 'package:ava_sync_mobile/desktop/iniciar_com_sistema.dart';
 import 'package:ava_sync_mobile/desktop/segundo_plano.dart';
 import 'package:ava_sync_mobile/estado_app.dart';
+import 'package:ava_sync_mobile/plataforma.dart';
 import 'package:ava_sync_mobile/telas/inicio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -25,6 +26,13 @@ void main() {
       expect(Atualizacao.nomeDoArquivo(beta: true, plataforma: 'Android'), 'AVA-Sync-Beta.apk');
       expect(Atualizacao.nomeDoArquivo(beta: true, plataforma: 'Windows'), 'AVA-Sync-Beta-Windows.exe');
     });
+  });
+
+  test('instalado pelo AUR só quando o executável está em /opt/ava-sync no Linux', () {
+    expect(instaladoPeloAur('Linux', '/opt/ava-sync/ava_sync_mobile'), isTrue);
+    expect(instaladoPeloAur('Linux', '/home/aluno/AVA-Sync/ava_sync_mobile'), isFalse);
+    expect(instaladoPeloAur('Linux', '/opt/ava-sync-outro/ava_sync_mobile'), isFalse);
+    expect(instaladoPeloAur('Windows', '/opt/ava-sync/ava_sync_mobile'), isFalse);
   });
 
   group('segundo plano no computador', () {

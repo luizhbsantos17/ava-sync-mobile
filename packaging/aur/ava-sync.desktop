@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=AVA Sync
+GenericName=Sincronizador do AVA
+Comment=Prazos, atividades, avisos, materiais e notas do AVA do Ifes
+Exec=ava-sync
+Icon=ava-sync
+Terminal=false
+Categories=Education;Network;
+Keywords=AVA;Moodle;Ifes;Q-Acadêmico;
+StartupWMClass=io.github.avasync.desktop

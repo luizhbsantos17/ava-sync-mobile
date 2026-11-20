@@ -69,6 +69,18 @@ com notificações e envio de atividades. Funciona sozinho no celular, sem PC, e
 2. Abra o arquivo. O Android vai pedir para permitir "instalar apps desta fonte": permita.
 3. Entre com o endereço do seu Moodle, usuário e senha.
 
+### Arch Linux (e derivados: Manjaro, EndeavourOS...)
+
+O app de computador está no AUR como `ava-sync-bin`:
+
+```bash
+yay -S ava-sync-bin      # instala (depois abra "AVA Sync" no menu ou rode ava-sync)
+yay -Syu                 # atualiza junto com o resto do sistema
+```
+
+Outras distribuições: baixe `AVA-Sync-Linux.tar.gz` na página **Releases**, extraia e
+rode `ava_sync_mobile`.
+
 ### Meu Moodle é compatível?
 
 Na tela de login, toque no ícone ao lado do endereço para **verificar o site**. Ele confere se

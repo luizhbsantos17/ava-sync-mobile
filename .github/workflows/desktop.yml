@@ -102,7 +102,11 @@ jobs:
           flutter build linux --release --build-number "$BUILD"
           --dart-define=AVA_SYNC_CHANNEL=${{ inputs.canal }}
           --dart-define=AVA_SYNC_BUILD="$BUILD"
-      - run: tar -czf "$ARQUIVO" -C build/linux/x64/release/bundle .
+      # ícone e licença vão junto: o pacote do AUR (packaging/aur) instala os dois
+      - run: |
+          cp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png build/linux/x64/release/bundle/data/ava-sync.png
+          cp LICENSE build/linux/x64/release/bundle/LICENSE
+          tar -czf "$ARQUIVO" -C build/linux/x64/release/bundle .
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARQUIVO }}
@@ -111,6 +115,54 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ inputs.tag }}" "$ARQUIVO" --clobber
+
+  # Pacote ava-sync-bin no AUR (Arch Linux: `yay -S ava-sync-bin`). Só a versão oficial.
+  # Precisa do secret AUR_SSH_PRIVATE_KEY (chave SSH cadastrada na conta do AUR); sem ele,
+  # o job só confere o PKGBUILD e não publica nada.
+  aur:
+    needs: linux
+    if: inputs.canal == 'production'
+    runs-on: ubuntu-latest
+    env:
+      TEM_AUR: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: AVA-Sync-Linux.tar.gz
+      - name: Preparar PKGBUILD
+        run: |
+          versao=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*([^+]+).*/\1/')
+          packaging/aur/preparar.sh "$versao" "$BUILD" AVA-Sync-Linux.tar.gz aur
+          cp AVA-Sync-Linux.tar.gz "aur/ava-sync-$versao.$BUILD.tar.gz"
+      # monta o pacote de verdade num Arch Linux e gera o .SRCINFO que o AUR exige
+      - name: Testar no Arch Linux
+        run: |
+          docker run --rm -v "$PWD/aur:/pkg" archlinux:base-devel bash -euc '
+            useradd -m construtor && chown -R construtor /pkg
+            cd /pkg
+            su construtor -c "makepkg --nodeps --noconfirm -f"
+            su construtor -c "makepkg --printsrcinfo" > .SRCINFO
+            pacman -Qlp ./*.pkg.tar.zst | grep -q /usr/bin/ava-sync'
+          sudo chown -R "$USER" aur
+      - name: Publicar no AUR
+        if: env.TEM_AUR == 'true'
+        env:
+          CHAVE: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CHAVE" > ~/.ssh/aur && chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519,rsa aur.archlinux.org >> ~/.ssh/known_hosts
+          printf 'Host aur.archlinux.org\n  User aur\n  IdentityFile ~/.ssh/aur\n' > ~/.ssh/config
+          git clone ssh://aur@aur.archlinux.org/ava-sync-bin.git repo-aur
+          cp aur/PKGBUILD aur/ava-sync.desktop aur/.SRCINFO repo-aur/
+          cd repo-aur
+          git config user.name "AVA Sync CI"
+          git config user.email "ava-sync-ci@users.noreply.github.com"
+          git add PKGBUILD ava-sync.desktop .SRCINFO
+          if git diff --cached --quiet; then echo "AUR já está em dia"; exit 0; fi
+          git commit -m "$(grep -m1 '^pkgver=' PKGBUILD | cut -d= -f2)"
+          git push origin HEAD:master
 
   macos:
     runs-on: macos-latest
