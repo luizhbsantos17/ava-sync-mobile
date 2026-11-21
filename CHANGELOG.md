@@ -21,6 +21,12 @@ essa seção quando a versão atual ainda não tem uma.
 
 ## [Não lançado]
 
+## [1.4.0] - 2026-11-21
+### Adicionado
+- **Q-Acadêmico no Linux**: notas, faltas e horário agora podem ser importados também no
+  computador com Linux, pelo site do Q-Acadêmico aberto dentro do app. É preciso ter o
+  WebKitGTK instalado (pacote `webkit2gtk-4.1`).
+
 ## [1.3.1] - 2026-11-19
 ### Alterado
 - Avaliação docente: **nota padrão e comentário padrão** no topo e um botão "Responder todas".

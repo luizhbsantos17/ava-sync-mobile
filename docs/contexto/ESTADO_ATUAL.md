@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-19 (1.3.1: avaliação docente com nota e comentário padrão)
+Última atualização: 2026-11-21 (1.4.0: Q-Acadêmico no Linux com WebKitGTK)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
@@ -76,8 +76,11 @@ problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CH
   intactos no servidor). A v2 guarda várias chaves por conversa e recebe as que faltam
   por envelope; conferir no celular se as mensagens do outro membro voltam.
 - Duas branches `feature/**` publicando ao mesmo tempo sobrescrevem a mesma release beta.
-- Computador: Q-Acadêmico não funciona no Linux (sem navegador embutido); no Windows usa
-  o WebView2 e não foi testado com o site real. Agenda do celular não existe no computador.
+- Computador: no Linux o Q-Acadêmico usa o WebKitGTK (`webview_all_linux`, pacote
+  `webkit2gtk-4.1`) e o app roda pelo X11/XWayland, porque no Wayland nativo a página
+  não aparece por cima do Flutter. Página de login, JS e URL testados no Arch+Hyprland;
+  login e importação com conta real ainda não. No Windows usa o WebView2 e não foi
+  testado com o site real. Agenda do celular não existe no computador.
 - Computador: Linux e macOS não se atualizam sozinhos (abrem o download no navegador);
   o app do macOS não é assinado pela Apple (na 1ª vez: clique direito > Abrir).
 - Computador: bandeja, notificações e "abrir com o sistema" ainda não foram vistos rodando

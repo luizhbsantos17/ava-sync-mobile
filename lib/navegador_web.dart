@@ -2,20 +2,26 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:webview_all_linux/webview_all_linux.dart' show LinuxWebViewController;
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart' as lnx;
 import 'package:webview_windows/webview_windows.dart' as win;
 
 /// Navegador embutido usado pelo Q-Acadêmico. Esconde a diferença entre plataformas:
 /// - Android, iOS e macOS: `webview_flutter` (o navegador do próprio sistema);
 /// - Windows: `webview_windows` (Microsoft Edge WebView2, que já vem no Windows 10/11);
-/// - Linux: sem navegador embutido por enquanto ([suportado] é falso).
+/// - Linux: `webview_all_linux` (WebKitGTK 4.1, pacote `webkit2gtk-4.1` do sistema).
 abstract class NavegadorWeb {
   /// [aoTerminar]: a página terminou de carregar (url final).
   /// [aoFalhar]: a página principal não carregou (mensagem do erro).
   factory NavegadorWeb({void Function(String url)? aoTerminar, void Function(String erro)? aoFalhar}) =>
-      Platform.isWindows ? _NavegadorWindows(aoTerminar, aoFalhar) : _NavegadorPadrao(aoTerminar, aoFalhar);
+      Platform.isWindows
+          ? _NavegadorWindows(aoTerminar, aoFalhar)
+          : Platform.isLinux
+          ? _NavegadorLinux(aoTerminar, aoFalhar)
+          : _NavegadorPadrao(aoTerminar, aoFalhar);
 
-  static bool get suportado => !Platform.isLinux;
+  static bool get suportado => true;
 
   Future<void> carregar(String url);
   Future<void> rodarJs(String codigo);
@@ -134,6 +140,67 @@ class _NavegadorWindows implements NavegadorWeb {
     for (final s in _subs) {
       s.cancel();
     }
+    _c.dispose();
+  }
+}
+
+/// Linux: WebKitGTK (o mesmo motor do GNOME Web). O plugin põe a página nativa por cima
+/// da área do widget; a sessão é compartilhada, então os cookies do login ficam guardados.
+class _NavegadorLinux implements NavegadorWeb {
+  late final LinuxWebViewController _c;
+  late final Future<void> _pronto;
+
+  _NavegadorLinux(void Function(String)? aoTerminar, void Function(String)? aoFalhar) {
+    _c = LinuxWebViewController(const lnx.PlatformWebViewControllerCreationParams());
+    final nav = lnx.PlatformNavigationDelegate(const lnx.PlatformNavigationDelegateCreationParams());
+    _pronto = Future.wait([
+      nav.setOnPageFinished((url) => aoTerminar?.call(url)),
+      nav.setOnWebResourceError((e) {
+        if (e.isForMainFrame ?? true) aoFalhar?.call(e.description);
+      }),
+    ]).then((_) async {
+      await _c.setJavaScriptMode(lnx.JavaScriptMode.unrestricted);
+      await _c.setPlatformNavigationDelegate(nav);
+    });
+  }
+
+  @override
+  Future<void> carregar(String url) async {
+    await _pronto;
+    await _c.loadRequest(lnx.LoadRequestParams(uri: Uri.parse(url)));
+  }
+
+  @override
+  Future<void> rodarJs(String codigo) async {
+    await _pronto;
+    await _c.runJavaScript(codigo);
+  }
+
+  @override
+  Future<Object?> rodarJsComResultado(String codigo) async {
+    await _pronto;
+    return _c.runJavaScriptReturningResult(codigo);
+  }
+
+  @override
+  Future<String?> urlAtual() async {
+    await _pronto;
+    return _c.currentUrl();
+  }
+
+  @override
+  Future<void> recarregar() async {
+    await _pronto;
+    await _c.reload();
+  }
+
+  @override
+  Widget widget() => Builder(
+    builder: (context) => lnx.PlatformWebViewWidget(lnx.PlatformWebViewWidgetCreationParams(controller: _c)).build(context),
+  );
+
+  @override
+  void descartar() {
     _c.dispose();
   }
 }
