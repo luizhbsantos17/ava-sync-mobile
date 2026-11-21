@@ -165,3 +165,14 @@ O dono pediu para o app responder sozinho os questionários obrigatórios que bl
 Q-Acadêmico. Decisão: o app nunca escolhe as respostas; a pessoa define a nota (0 a 10) de cada
 disciplina e confirma. O app marca a opção com aquela nota em todas as perguntas e envia pelo
 próprio formulário, no WebView logado (sem HTTP direto). Só os questionários obrigatórios.
+
+## Navegador do Q-Acadêmico no Linux (2026-11-21)
+O Linux não tinha navegador embutido, então o Q-Acadêmico não funcionava. Decisão: usar o
+`webview_all_linux` (WebKitGTK 4.1, põe a página num GtkOverlay sobre o Flutter), direto com o
+`webview_platform_interface` para não trazer o `webview_all` inteiro (Android/Windows extras).
+Descartados: `flutter_inappwebview_linux` (beta, WPE), `webview_flutter_linux` (exige Rust) e
+`desktop_webview_window` (janela separada, não serve para o coletor escondido). No Wayland
+nativo a página não aparece (a superfície do Flutter fica por cima), então o runner prefere
+X11/XWayland (`gdk_set_allowed_backends("x11,wayland")` em `linux/runner/main.cc`, respeitando
+`GDK_BACKEND`). Efeito: o app precisa de `webkit2gtk-4.1` e, no Wayland, do XWayland.
+Widgets Flutter por cima da área da página (diálogos, snackbars) ficam escondidos atrás dela.
