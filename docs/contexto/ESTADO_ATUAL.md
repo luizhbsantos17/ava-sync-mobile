@@ -3,7 +3,7 @@
 Atualize esta página **no fim de toda tarefa**: mova itens entre as seções, registre
 problemas conhecidos e ideias. Mantenha curta; o histórico detalhado fica no CHANGELOG.
 
-Última atualização: 2026-11-19 (1.3.1: avaliação docente com nota e comentário padrão)
+Última atualização: 2026-11-21 (1.4.0: Q-Acadêmico no Linux com WebKitGTK)
 
 ## Pronto
 - Sync do AVA com prazos, provas, avisos, materiais offline, livros e envio de atividades.
