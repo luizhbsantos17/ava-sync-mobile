@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
@@ -253,8 +254,14 @@ class VozController extends ChangeNotifier {
         await lp.setScreenShareEnabled(false);
         await _pararSegundoPlano();
       } else if (Plataforma.desktop) {
-        final fonte = await escolher();
-        if (fonte == null) return;
+        // No Wayland, listar telas pelo desktopCapturer derruba o app (SIGSEGV no libwebrtc):
+        // pula o seletor próprio e deixa o portal do sistema perguntar o que compartilhar.
+        final wayland = Platform.isLinux && (Platform.environment['WAYLAND_DISPLAY'] ?? '').isNotEmpty;
+        String? fonte;
+        if (!wayland) {
+          fonte = await escolher();
+          if (fonte == null) return;
+        }
         ligandoMidia = true;
         notifyListeners();
         await lp.setScreenShareEnabled(true,

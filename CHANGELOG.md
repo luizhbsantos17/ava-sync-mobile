@@ -7,6 +7,10 @@ mostra esse texto na janela "Nova versão disponível". Sem a seção, o build o
 Formato (escreva para quem usa o app, em português, sem dados pessoais):
 
 ```
+## [1.4.1] - 2026-11-21
+### Corrigido
+- Linux (Wayland): o app não fecha mais ao clicar em compartilhar tela; o sistema pergunta o que compartilhar.
+
 ## [X.Y.Z] - AAAA-MM-DD
 ### Adicionado
 - ...
